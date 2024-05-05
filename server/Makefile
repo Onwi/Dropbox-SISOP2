@@ -1,3 +1,3 @@
-server: src/*.c 
-	gcc -o server src/*.c
+server: src/*.c include/*.h
+	gcc -o server src/*.c include/*.h
 

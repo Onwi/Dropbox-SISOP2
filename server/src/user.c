@@ -56,9 +56,8 @@ void print_user_list(UserList *list) {
 	printf("all users connected to server\n");
 	
 	UserList *auxNode = list;
-	while (auxNode) {
+    while (auxNode) {
 		printf("username: %s\n", auxNode->user.username);
 		auxNode = auxNode->next;
 	}
 }
-
