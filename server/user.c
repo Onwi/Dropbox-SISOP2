@@ -40,12 +40,38 @@ UserList *free_list(UserList *list) {
 	return NULL;
 }
 
-bool search_user(UserList *list, User user) {
+User *get_user(UserList *list, char* username) {
+	UserList* aux = list;
+
+	while(aux)
+	{
+		if(strcmp(aux->user.username, username) == 0 )
+			return &(aux->user);
+
+		aux = aux->next;
+	}
+		
+	return NULL;
+}
+
+void increase_user_session(UserList *list, char* username)
+{
+	if (!list) return;
+	 
+	UserList *auxNode;
+	for (auxNode = list; auxNode; auxNode = auxNode->next) {
+		if (strcmp(username, auxNode->user.username) == 0) {
+			auxNode->user.sessions_amount = auxNode->user.sessions_amount + 1;
+		}
+	}
+}
+
+bool search_user(UserList *list, char* username) {
 	if (!list) return false;
 	 
 	UserList *auxNode;
-	for (auxNode = list; !auxNode; auxNode = auxNode->next) {
-		if (strcmp(user.username, auxNode->user.username) == 0) {
+	for (auxNode = list; auxNode; auxNode = auxNode->next) {
+		if (strcmp(username, auxNode->user.username) == 0) {
 			return true;
 		}
 	}
@@ -58,6 +84,7 @@ void print_user_list(UserList *list) {
 	UserList *auxNode = list;
     while (auxNode) {
 		printf("username: %s\n", auxNode->user.username);
+		printf("Sessions: %d\n", auxNode->user.sessions_amount);
 		auxNode = auxNode->next;
 	}
 }

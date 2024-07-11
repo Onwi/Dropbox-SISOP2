@@ -1,10 +1,12 @@
 #include <stdbool.h>
 #include <netinet/in.h>
 
+#define MAX_SESSION 2
+
 typedef struct user{
 	char *username;
-	struct sockaddr_in clientAddr;
-	// more information to be added
+	int sessions_amount;
+	int sockets[MAX_SESSION];
 }User;
 
 
@@ -18,5 +20,7 @@ typedef struct userNode{
 UserList *init();
 UserList *insert_user(UserList *list, User user); // end of list
 UserList *free_list(UserList *list);
-bool search_user(UserList *list, User user);
+User *get_user(UserList *list, char* username);
+void increase_user_session(UserList *list, char* username);
+bool search_user(UserList *list, char* username);
 void print_user_list(UserList *list);
