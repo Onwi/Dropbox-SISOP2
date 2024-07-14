@@ -8,6 +8,8 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+#include "../communication/communication.h"
+
 int main(int argc, char *argv[])
 {
   int sockfd, n;
@@ -52,7 +54,7 @@ int main(int argc, char *argv[])
   else
   {
     // make sync_dir user local device
-    if (mkdir("sync_dir", 777) != 0)
+    if (mkdir("sync_dir", S_IRWXU | S_IRWXG | S_IRWXO) != 0)
     {
       printf("error creating dir");
     }
@@ -67,8 +69,16 @@ int main(int argc, char *argv[])
     printf("ERROR reading from socket\n");
 
   printf("response from user creation: %s\n", response);
-  if (strcmp(response, "already logged in two devices") == 0) {
-    exit(1);
+  if (strcmp(response, "loggin in second device") == 0) {
+    // os dados dos arquivos recebidos deviam estar aqui
+    Packet *packet = (Packet *) malloc(sizeof(Packet));
+    int packetBytes = read(sockfd, packet, sizeof(packet));
+    printf("bytes lidos%d\n", packetBytes);
+    if (packetBytes < 0) 
+      printf("ERROR reading from socket\n");
+    
+    FILE *file = fopen((* packet).filename, "w");
+    fwrite((* packet).payload, (* packet).file_size, 1, file);
   }
 
   // we know have this user's device connected and local sync_dir created

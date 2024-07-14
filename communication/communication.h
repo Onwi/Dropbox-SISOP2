@@ -5,9 +5,9 @@ typedef struct packet{
 	int command; //Tipo do comando
 	uint16_t seqn; //Número de sequência
 	uint32_t total_size; //Número total de fragmentos
-	uint16_t length; //Comprimento do payload
-	const char* filename;	
-	const char* payload; //Dados do pacote
+	long file_size; //Comprimento do payload
+	char filename[100];	
+	char payload[25000]; //Dados do pacote
 } Packet;
 
 // send file thru socket
