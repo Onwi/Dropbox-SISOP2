@@ -1,2 +1,3 @@
-client: *.c ../communication/*.c
-	gcc -o client *.c ../communication/*.c -lpthread 
+client: src/*.c 
+	gcc -o client src/*.c -lpthread 
+

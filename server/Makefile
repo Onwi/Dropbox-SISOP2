@@ -1,2 +1,2 @@
-server: *.c ../include/*.h ../communication/*.h
-	gcc -o server *.c ../communication/*.c -lpthread 
+server: src/*.c
+	gcc -o server src/*.c -lpthread -static

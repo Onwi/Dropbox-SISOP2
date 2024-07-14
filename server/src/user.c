@@ -27,6 +27,37 @@ UserList *insert_user(UserList *list, User user) {
 	return list;
 }
 
+UserList *remove_user(UserList *list, char* username)
+{
+	UserList* aux;
+	UserList* aux_prev;
+
+	aux = list;
+	aux_prev = NULL;
+	
+	// empty list
+	if(!list)
+		return NULL;
+
+	// delete first user
+	if( strcmp(list->user.username, username) == 0 )
+		return NULL;
+
+
+	while(aux->next)
+	{
+		if( strcmp(aux->user.username, username) == 0 )
+		{
+			// delete
+			aux_prev->next = aux->next;
+			//free(aux);
+		}
+
+		aux_prev = aux;
+		aux = aux->next;
+	}
+}
+
 UserList *free_list(UserList *list) {
 	if (!list) return NULL;
 
@@ -40,16 +71,17 @@ UserList *free_list(UserList *list) {
 	return NULL;
 }
 
-User *get_user(UserList *list, char* username) {
+User get_user(UserList *list, char* username)
+{
 	UserList* aux = list;
 
-	while(aux) {
-		if(strcmp(aux->user.username, username) == 0 )
-			return &(aux->user);
+	while(aux)
+	{
+		if( strcmp( aux->user.username, username) == 0 )
+			return (aux->user);
 
 		aux = aux->next;
 	}
-	return NULL;
 }
 
 void increase_user_session(UserList *list, char* username)
@@ -60,6 +92,18 @@ void increase_user_session(UserList *list, char* username)
 	for (auxNode = list; auxNode; auxNode = auxNode->next) {
 		if (strcmp(username, auxNode->user.username) == 0) {
 			auxNode->user.sessions_amount = auxNode->user.sessions_amount + 1;
+		}
+	}
+}
+
+void decrease_user_session(UserList *list, char* username)
+{
+	if (!list) return;
+	 
+	UserList *auxNode;
+	for (auxNode = list; auxNode; auxNode = auxNode->next) {
+		if (strcmp(username, auxNode->user.username) == 0) {
+			auxNode->user.sessions_amount = auxNode->user.sessions_amount - 1;
 		}
 	}
 }
