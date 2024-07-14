@@ -43,14 +43,12 @@ UserList *free_list(UserList *list) {
 User *get_user(UserList *list, char* username) {
 	UserList* aux = list;
 
-	while(aux)
-	{
+	while(aux) {
 		if(strcmp(aux->user.username, username) == 0 )
 			return &(aux->user);
 
 		aux = aux->next;
 	}
-		
 	return NULL;
 }
 
