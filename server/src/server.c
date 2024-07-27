@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <sys/stat.h>
+#include <dirent.h>
 
 #include "../include/user.h"
 #include "../include/thread_list.h"
@@ -19,6 +20,7 @@
 #define SESSION_LIMIT_ERROR 1002
 #define SESSION_FINISHED 1003
 #define USER_EXIT 1004
+#define USERNAME_MAX_SIZE 32
 
 
 UserList* user_list;
@@ -28,13 +30,13 @@ pthread_mutex_t lock;
 struct sync_struct
 {
 	int socket;
-	char username[256];
+	char username[USERNAME_MAX_SIZE];
 };
 
-void handle_sync_download(int new_server_sync_sockfd, char file_name[256], char username[256])
+void handle_sync_download(int new_server_sync_sockfd, char file_name[256], char username[USERNAME_MAX_SIZE])
 {
 	char file_path[256];
-	char buffer[256];
+	char buffer[MESSAGE_SIZE];
   	FILE *fp;
 	unsigned int file_size;
 
@@ -77,16 +79,16 @@ void *server_sync_handler(void *arg)
 {
 	struct sync_struct my_sync_struct  = *(struct sync_struct *) arg;
 	int th_sync_needed;
-	char synch_buffer[256];
-	bzero(synch_buffer, 256);
+	char synch_buffer[MESSAGE_SIZE];
 	int new_server_sync_sockfd;
-	char username[256];
+	char username[USERNAME_MAX_SIZE];
 	User user;
 	int i;
 
+	bzero(synch_buffer, MESSAGE_SIZE);
+
 	new_server_sync_sockfd = my_sync_struct.socket;
 	strcpy(username, my_sync_struct.username);
-
 
 	while(1)
 	{
@@ -97,19 +99,12 @@ void *server_sync_handler(void *arg)
 
 		if(th_sync_needed)
 		{
-			printf("Need synch: %s\n", user.file_name_sync);
-
-			
+			printf("Need synch: %s\n", user.file_name_sync);			
 
 			pthread_mutex_lock(&lock);
 			for(i = 0; i < user.sessions_amount; i++)
-			{
-				//pthread_mutex_lock(&lock);
-				handle_sync_download(/*new_server_sync_sockfd*/ user.all_sessions_sockets[i][1], user.file_name_sync, username);
-				//pthread_mutex_unlock(&lock);
-			}
+				handle_sync_download(user.all_sessions_sockets[i][1], user.file_name_sync, username);
 
-			//pthread_mutex_lock(&lock);
 			turn_off_user_sync_notification(user_list, username);
 			pthread_mutex_unlock(&lock);
 		}
@@ -121,7 +116,7 @@ void *server_sync_handler(void *arg)
 }
 
 
-void handle_download(int newsockfd, char buffer[256], char username[256])
+void handle_download(int newsockfd, char buffer[MESSAGE_SIZE], char username[USERNAME_MAX_SIZE])
 {
 	char file_name[256], file_path[256];
   	FILE *fp;
@@ -163,23 +158,102 @@ void handle_download(int newsockfd, char buffer[256], char username[256])
 	return;
 }
 
+void get_sync_dir(int newsockfd, char sync_dir_path[8 + USERNAME_MAX_SIZE])
+{
+	int number_of_files;
+	DIR *dp;
+	struct dirent *ep;
+	char buffer[MESSAGE_SIZE];
+	char file_path[256]; 
+	struct stat st = {0};
+	FILE* fp;
+	int file_size;
+
+	
+	// If user directory doesnt exist, create one
+	if (stat(sync_dir_path, &st) == -1)
+		mkdir(sync_dir_path, 0700);
+
+	  
+	dp = opendir(sync_dir_path);
+
+	if(!dp)
+	{
+		perror ("Couldn't open the directory");
+		return;
+	}
+
+	// Counts the number of files
+	number_of_files = 0;
+	while ((ep = readdir (dp)))
+		if (strcmp(ep->d_name, ".") == 0 || strcmp(ep->d_name, "..") == 0)
+		{
+			// Do nothing 
+		}
+		else
+		{
+			number_of_files++;
+			//stat(ep->d_name, &st);
+			//printf("%s\n", ep->d_name);
+		}
+
+	// Sends the number of files
+	itoa(number_of_files, buffer);
+	send_msg(newsockfd, buffer);
+
+	rewinddir(dp);
+
+	// Send every file for synchronization
+	while ((ep = readdir (dp)))
+		if (strcmp(ep->d_name, ".") == 0 || strcmp(ep->d_name, "..") == 0)
+		{
+			// Do nothing 
+		}
+		else
+		{
+			strcpy(file_path, sync_dir_path);
+			strcat(file_path, "/");
+			strcat(file_path, ep->d_name);
+			fp = fopen(file_path, "rb");
+			printf("Opening: %s\n", file_path);
+
+			// Sends file name
+			strcpy(buffer, ep->d_name);
+			send_msg(newsockfd, buffer);
+
+			// Compute file size
+			fseek(fp, 0L, SEEK_END);
+			file_size = ftell(fp);
+			rewind(fp);
+			itoa(file_size, buffer);
+
+			// Send file size
+			send_msg(newsockfd, buffer);
+
+			// Send file data
+			send_file(newsockfd, fp, file_size);
+
+			fclose(fp);
+		}
+}
+
 void *user_thread(void *arg) {
 	User th_user  = *(User *) arg;
-	int newsockfd, new_server_sync_sockfd;
-	char th_buffer[256];
-	char th_synch_buffer[256];	
-	bzero(th_buffer, 256);
-	pthread_t server_sync_thread;
-	struct stat st = {0};
-	char user_file_path[256], user_file_path_copy[256];
+	int newsockfd, new_server_sync_sockfd, val, file_size;
+	char th_buffer[MESSAGE_SIZE];
+	char th_synch_buffer[MESSAGE_SIZE];	
+	char sync_dir_path[8 + USERNAME_MAX_SIZE];
+	char file_path[256];
+	char file_name[256];
 	int th_return_value;
 	FILE *fp;
+	pthread_t server_sync_thread;
 	struct sync_struct my_sync_struct;
-	char file_name_sync[256]; 
-	int session_number;
+
 
 	printf("Handling user thread: %s\n", th_user.username);
-
+	bzero(th_buffer, MESSAGE_SIZE);
+	bzero(th_synch_buffer, MESSAGE_SIZE);
 
 	newsockfd = th_user.sockets[0];
 	new_server_sync_sockfd = th_user.sockets[1];
@@ -204,20 +278,19 @@ void *user_thread(void *arg) {
 	// User is already logged in on another device
 	else
 	{
-		strcpy(th_user.username, th_buffer);
 		printf("User %s has been found online.\n", th_buffer);
 		th_user = get_user(user_list, th_buffer);
 
 		if (th_user.sessions_amount == MAX_SESSION)
 		{
-			fprintf(stderr, "ERROR max user session reached\n");
+			fprintf(stderr, "ERROR max user sessions reached\n");
 
 			strcpy(th_buffer, "exit");
 			send_msg(newsockfd, th_buffer);
 
 			close(newsockfd);
 			close(new_server_sync_sockfd);
-			int val = SESSION_LIMIT_ERROR;
+			val = SESSION_LIMIT_ERROR;
 			pthread_mutex_unlock(&lock);
 			pthread_exit(&val);
 		}
@@ -237,33 +310,22 @@ void *user_thread(void *arg) {
 	strcpy(th_buffer, "Connected");
 	send_msg(newsockfd, th_buffer); // Send ok to client
 
-	
-	//get_sync_dir();
-	// Create sync dir path
-	strcpy(user_file_path, "sync_dir_");
-	strcat(user_file_path, th_user.username);
-	
-	// If user directory doesnt exist, create one
-	if (stat(user_file_path, &st) == -1)
-		mkdir(user_file_path, 0700);
-
+	// Create and synchronize sync dir
+	strcpy(sync_dir_path, "sync_dir_");
+	strcat(sync_dir_path, th_user.username);
+	get_sync_dir(newsockfd, sync_dir_path);
 
 	// Create Sync thread
 	my_sync_struct.socket = new_server_sync_sockfd;
 	strcpy(my_sync_struct.username, th_user.username);
-	pthread_create(&server_sync_thread, NULL, server_sync_handler, /*&new_server_sync_sockfd*/ &my_sync_struct);
-	int not_exit =1;
+	pthread_create(&server_sync_thread, NULL, server_sync_handler, &my_sync_struct);
+
 	while (1)
 	{
 		printf("Handling user thread: %s\n", th_user.username);
 
-		strcpy(user_file_path_copy, user_file_path);
-
-		printf("Next command: %s\n", th_buffer);
-
 		// Read user request
 		receive_msg(newsockfd, th_buffer);
-
 
 		// Handle upload
 		if (strstr(th_buffer, "upload"))
@@ -272,30 +334,29 @@ void *user_thread(void *arg) {
 
 			// Get file name
 			receive_msg(newsockfd, th_buffer);
-			printf("File name: %s\n", th_buffer);
+			strcpy(file_name, th_buffer);
+			printf("File name: %s\n", file_name);
 
-			strcpy(file_name_sync, th_buffer);
+			strcpy(file_path, sync_dir_path);
+			strcat(file_path, "/");
+			strcat(file_path, file_name);
+			printf("File path: %s\n", file_path);
 
-			strcat(user_file_path_copy, "/");
-			strcat(user_file_path_copy, th_buffer);
-
-			printf("File name: %s", user_file_path_copy);	
-
-			fp = fopen(user_file_path_copy, "wb");
-
+			fp = fopen(file_path, "wb");
 
 			// Get file size
 			receive_msg(newsockfd, th_buffer);
-			printf("%d\n", atoi(th_buffer));
+			file_size = atoi(th_buffer);
+			printf("%d\n", file_size);
 
 			// Get file data
-			receive_file(newsockfd, fp, atoi(th_buffer));
+			receive_file(newsockfd, fp, file_size);
 
 			// Get name for sync notification
 			receive_msg(newsockfd, th_buffer);
 
 			pthread_mutex_lock(&lock);
-			set_user_sync_notification(user_list, th_buffer, file_name_sync);
+			set_user_sync_notification(user_list, th_buffer, file_name);
 			pthread_mutex_unlock(&lock);
 
 			fclose(fp);
@@ -352,7 +413,7 @@ int main(int argc, char *argv[])
 	int first_socket_ok, second_socket_ok;
 	socklen_t clilen;
 	struct sockaddr_in serv_addr, cli_addr;
-	struct sockaddr_in serv_sync_addr, cli_sync_addr;
+	struct sockaddr_in serv_sync_addr;
 	pthread_t current_thread;
 	User* user;
 
@@ -403,6 +464,7 @@ int main(int argc, char *argv[])
 	clilen = sizeof(struct sockaddr_in);
 
 
+	// Server waits for next connection
 	while(1)
 	{
 		user = (User*) malloc(sizeof(User));
@@ -432,9 +494,7 @@ int main(int argc, char *argv[])
 			pthread_create(&current_thread, NULL, user_thread, user);
 		}
 		else
-		{
 			free(user);
-		}
 	}
 
 	close(sockfd);

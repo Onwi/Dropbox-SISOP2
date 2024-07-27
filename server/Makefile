@@ -1,2 +1,2 @@
 server: src/*.c
-	gcc -o server src/*.c ../shared/src/*.c -lpthread -static
+	gcc -o server src/*.c ../shared/src/*.c -lpthread -static -Wall -Werror -Wpedantic

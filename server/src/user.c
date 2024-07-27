@@ -79,11 +79,13 @@ User get_user(UserList *list, char* username)
 
 	while(aux)
 	{
-		if( strcmp( aux->user.username, username) == 0 )
+		if(strcmp( aux->user.username, username) == 0)
 			return (aux->user);
 
 		aux = aux->next;
 	}
+
+	return list->user;
 }
 
 void increase_user_session(UserList *list, char* username)
