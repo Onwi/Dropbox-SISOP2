@@ -237,6 +237,28 @@ void get_sync_dir(int newsockfd, char sync_dir_path[8 + USERNAME_MAX_SIZE])
 		}
 }
 
+void handle_delete(int newsockfd, char buffer[MESSAGE_SIZE], char username[USERNAME_MAX_SIZE])
+{
+    char file_name[256], file_path[256];
+    
+    receive_msg(newsockfd, buffer); // Get file name
+    strcpy(file_name, buffer);
+
+    // Create file path
+    strcpy(file_path, "sync_dir_");
+    strcat(file_path, username);
+    strcat(file_path, "/");
+    strcat(file_path, file_name);
+
+    if(remove(file_path) == 0)
+        printf("File %s deleted\n", file_name);
+    else
+    {
+        printf("Could not delete %s\n", file_name);
+        perror(" ");
+    }
+}
+
 void *user_thread(void *arg) {
 	User th_user  = *(User *) arg;
 	int newsockfd, new_server_sync_sockfd, val, file_size;
@@ -369,6 +391,7 @@ void *user_thread(void *arg) {
 		else if(strstr(th_buffer, "delete"))
 		{
 			printf("User wants to delete\n");
+            handle_delete(newsockfd, th_buffer, th_user.username);
 		}
 		else if(strstr(th_buffer, "list_server"))
 		{

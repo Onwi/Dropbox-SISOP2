@@ -262,14 +262,26 @@ void handle_download(int sockfd, char buffer[256])
     return;
 }
 
-void handle_remove(int sockfd, char buffer[256])
+void handle_delete(int sockfd, char buffer[256])
 {
+    char file_name[256], file_path[256];
 
-}
 
-void handle_exit(int sockfd, char buffer[256])
-{
+    buffer[strcspn(buffer, "\n")] = 0; // Remove '\n'
+    strcpy(file_name, &buffer[7]);  
 
+    send_msg(sockfd, buffer); // Send delete request
+    send_msg(sockfd, file_name); // Send file name
+
+    // Create path to file being deleted
+    strcpy(file_path, sync_dir_path);
+    strcat(file_path, "/");
+    strcat(file_path, file_name);
+
+    if(remove(file_path) == 0)
+        printf("File %s deleted\n", file_name);
+    else
+        printf("Could not delete %s\n", file_name);
 }
 
 int main(int argc, char *argv[])
@@ -386,8 +398,8 @@ int main(int argc, char *argv[])
         else if(strstr(buffer, "list_client")) // List client command
             handle_list_client();
 
-        else if(strstr(buffer, "remove")) // Remove command
-            handle_remove(sockfd, buffer);
+        else if(strstr(buffer, "delete")) // Remove command
+            handle_delete(sockfd, buffer);
         
         else if(strstr(buffer, "exit")) // Exit command
             break;
