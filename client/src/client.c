@@ -13,24 +13,25 @@
 #include <dirent.h>
 #include <time.h>
 #include <ftw.h>
+
 #include "../../shared/include/communication.h"
 
-#define bzero(ptr, size) memset(ptr, 0, size)
 
 #define PORT 4000
 #define SERVER_SYNC_PORT 4001
 #define USERNAME_MAX_SIZE 32
+#define USER_INPUT_MAX_SIZE 256
 
-pthread_mutex_t lock, user_feedback_lock, user_input_listener_lock;
-char user_input[256];
 int new_input_notification = 0;
-char sync_dir_path[256];
-char username[USERNAME_MAX_SIZE];
+char user_input[USER_INPUT_MAX_SIZE + 1];
+char sync_dir_path[9 + USERNAME_MAX_SIZE + 1];
+char username[USERNAME_MAX_SIZE + 1];
+pthread_mutex_t lock, user_feedback_lock, user_input_listener_lock;
 
 
 void* user_input_handler(void* args)
 {
-    char th_user_input[256];
+    char th_user_input[USER_INPUT_MAX_SIZE + 1];
 
     while(1)
     {
@@ -38,10 +39,11 @@ void* user_input_handler(void* args)
         printf("User input: ");
         pthread_mutex_unlock(&user_feedback_lock);
         
-        bzero(th_user_input, 256);
-        fgets(th_user_input, 256, stdin);
+        bzero(th_user_input, USER_INPUT_MAX_SIZE + 1);
+        fgets(th_user_input, USER_INPUT_MAX_SIZE, stdin);
 
         pthread_mutex_lock(&user_input_listener_lock);
+        bzero(user_input, USER_INPUT_MAX_SIZE + 1);
         strcpy(user_input, th_user_input);
         new_input_notification = 1;
         pthread_mutex_unlock(&user_input_listener_lock);
@@ -52,39 +54,56 @@ void* user_input_handler(void* args)
 
 void* server_sync_handler(void* args)
 {
-    int server_sync_sockfd = *(int*) args;
-    char buffer[MESSAGE_SIZE];
-    FILE* fp;
-    long int file_size;
+    int server_sync_sockfd;
+    unsigned int file_size;
+    char buffer[MESSAGE_SIZE + 1];
     char file_path[256];
+    FILE* fp;
 
+
+    server_sync_sockfd = *(int*) args;
 
     while(1)
     {
-        receive_msg(server_sync_sockfd, buffer); // Gets file size
-        file_size = atoi(buffer);
+        receive_msg(server_sync_sockfd, buffer); // Get synchronization type
+        printf("Synch type: %s\n", buffer);
 
-        printf("Needs synch AQUIIIIIIIIIIIIIIIIIIIIIIIII\n");
-    
-        receive_msg(server_sync_sockfd, buffer); // Gets file name
+        if(strcmp(buffer, "Upload") == 0)
+        {
+            receive_msg(server_sync_sockfd, buffer); // Gets file size
+            printf("Buffer: %s\n", buffer);
+            file_size = atoi(buffer);
+            printf("File size: %d\n", file_size);
 
-        strcpy(file_path, "sync_dir_");
-        strcat(file_path, username);
-        strcat(file_path, "/");
-        strcat(file_path, buffer);
+            printf("Needs synch AQUIIIIIIIIIIIIIIIIIIIIIIIII\n");
+        
+            receive_msg(server_sync_sockfd, buffer); // Gets file name
 
-        fp = fopen(file_path, "wb");
+            strcpy(file_path, "sync_dir_");
+            strcat(file_path, username);
+            strcat(file_path, "/");
+            strcat(file_path, buffer);
 
-        printf("File path: %s\n", file_path);
+            fp = fopen(file_path, "wb");
 
-        receive_file(server_sync_sockfd, fp, file_size); // Gets file data
+            if(fp)
+                printf("Abri file da propagacao\n");
+            else
+                printf("Nao abri file da propagacao\n");
 
-        printf("Received file: %s\n", file_path);
+            printf("File path: %s\n", file_path);
 
-        fclose(fp);
+            receive_file(server_sync_sockfd, fp, file_size); // Gets file data
+
+            printf("Received file: %s\n", file_path);
+
+            fclose(fp);
+        }
+        else if(strcmp(buffer, "Delete") == 0)
+        {
+
+        }
     }
-
-    return 0;
 }
 
 void handle_list_client()
@@ -142,10 +161,10 @@ void get_sync_dir(int sockfd)
 {
     int number_of_files, i;
     FILE* fp;
-    char buffer[MESSAGE_SIZE];
+    char buffer[MESSAGE_SIZE + 1];
     char file_name[256];
     char file_path[256];
-    long int file_size;
+    unsigned int file_size;
     struct stat st = {0};  
 
 
@@ -160,7 +179,6 @@ void get_sync_dir(int sockfd)
     mkdir(sync_dir_path, 0777);
 
     // Gets number of files to sync
-    printf("Cheguei aqui\n");
     receive_msg(sockfd, buffer);
     number_of_files = atoi(buffer);
 
@@ -187,11 +205,11 @@ void get_sync_dir(int sockfd)
     }
 }
 
-void handle_upload(int sockfd, char buffer[256])
+void handle_upload(int sockfd, char buffer[MESSAGE_SIZE + 1])
 {
-    long int file_size;
+    unsigned int file_size;
     FILE* fp;
-    char file_path[128];
+    char file_path[256], file_name[256];
 
     strcpy(file_path, &buffer[7]); // Get file path from user input
     file_path[strcspn(file_path, "\n")] = 0; // Remove '\n'
@@ -208,15 +226,16 @@ void handle_upload(int sockfd, char buffer[256])
     file_size = ftell(fp);
     rewind(fp);
 
-    printf("%ld\n", file_size);
+    printf("File size: %d\n", file_size);
 
-    //my_write_read(sockfd, buffer, 'w'); // Send upload request        
+    // Send upload request     
     send_msg(sockfd, buffer);
 
     // Send file name
-    strcpy( buffer, strrchr(file_path, '/') );
-    printf("%s\n", &(buffer[1]));
-    send_msg(sockfd, &(buffer[1]));
+    strcpy(file_name, strrchr(file_path, '/') + 1); // Copy file name without the '/'
+    printf("File name: %s\n", file_name);
+    strcpy(buffer, file_name);
+    send_msg(sockfd, buffer);
 
     // Send file size
     itoa(file_size, buffer);        
@@ -227,7 +246,8 @@ void handle_upload(int sockfd, char buffer[256])
     send_file(sockfd, fp, file_size);
 
     // Send name for sync notification
-    send_msg(sockfd, username); 
+    //strcpy(buffer, username);
+    //send_msg(sockfd, buffer);
 
     fclose(fp);
 }
@@ -284,85 +304,114 @@ void handle_delete(int sockfd, char buffer[256])
         printf("Could not delete %s\n", file_name);
 }
 
-int main(int argc, char *argv[])
+int sockets_setup(int* sockfd, int* server_sync_sockfd, struct sockaddr_in* serv_addr, struct sockaddr_in* serv_sync_addr, struct hostent* server)
 {
-    int sockfd, server_sync_sockfd;
-    struct sockaddr_in serv_addr, serv_sync_addr;
-    struct hostent *server;
-    char buffer[256];
-    pthread_t user_input_listener_thread;
-    pthread_t sync_thread;
-
-        
-    if (argc < 3) {
-        fprintf(stderr,"usage %s username hostname\n", argv[0]);
-        exit(0);
-    }
-
-    strcpy(username, argv[1]);
-        
-    server = gethostbyname(argv[2]);
-    if (server == NULL) {
-        fprintf(stderr,"ERROR, no such host\n");
-        exit(0);
-    }
-    
     // Create sockets
-    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    if ((*sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
     {
-        printf("ERROR opening socket\n");
-        exit(1);
+        fprintf(stderr, "ERROR opening socket\n");
+        return 1;
     }
 
-    if ((server_sync_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    if ((*server_sync_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
     {
-        printf("ERROR opening server sync socket\n");
-        exit(1);
+        fprintf(stderr, "ERROR opening server sync socket\n");
+        return 1;
     }
         
     // Bind sockets
-    serv_addr.sin_family = AF_INET;     
-    serv_addr.sin_port = htons(PORT);    
-    serv_addr.sin_addr = *((struct in_addr *)server->/*h_addr*/h_addr_list[0]);
-    bzero(&(serv_addr.sin_zero), 8);
+    serv_addr->sin_family = AF_INET;  
+    serv_addr->sin_port = htons(PORT);
+    serv_addr->sin_addr = *((struct in_addr *)server->h_addr_list[0]);
+    bzero(&(serv_addr->sin_zero), 8);
 
-    serv_sync_addr.sin_family = AF_INET;     
-    serv_sync_addr.sin_port = htons(SERVER_SYNC_PORT);    
-    serv_sync_addr.sin_addr = *((struct in_addr *)server->h_addr_list[0]);
-    bzero(&(serv_sync_addr.sin_zero), 8);   
+    serv_sync_addr->sin_family = AF_INET;     
+    serv_sync_addr->sin_port = htons(SERVER_SYNC_PORT);    
+    serv_sync_addr->sin_addr = *((struct in_addr *)server->h_addr_list[0]);
+    bzero(&(serv_sync_addr->sin_zero), 8);   
         
     // Connect sockets
-    if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+    if (connect(*sockfd, (struct sockaddr *) serv_addr, sizeof(*serv_addr)) < 0)
     {
-        printf("ERROR connecting\n");
-        exit(1);
+        fprintf(stderr, "ERROR connecting\n");
+        return 1;
     }
 
-    if (connect(server_sync_sockfd, (struct sockaddr *) &serv_sync_addr, sizeof(serv_sync_addr)) < 0)
+    if (connect(*server_sync_sockfd, (struct sockaddr *) serv_sync_addr, sizeof(*serv_sync_addr)) < 0)
     {
-        printf("ERROR connecting on server sync\n");
-        exit(1);
+        fprintf(stderr, "ERROR connecting on server sync\n");
+        return 1;
     }
 
-    // Sends username
-    strcpy(buffer, argv[1]);
+    return 0;
+}
+
+int establish_connection(int sockfd, int server_sync_sockfd, char* argv)
+{
+    char buffer[MESSAGE_SIZE + 1];
+
+    // Send username
+    strcpy(username, argv);
+    strcpy(buffer, username);
     send_msg(sockfd, buffer);
-    send_msg(server_sync_sockfd, "Synch request");
 
-    // check for OK session
+    // Check for OK session
     receive_msg(sockfd, buffer);
     printf("Buffer: %s\n", buffer);
     
     // If connection failed, return
     if(strcmp(buffer, "exit") == 0)
     {
+        fprintf(stderr, "Failed to establish connection with the server.\n");
         close(sockfd);
         close(server_sync_sockfd);
-        return 0;
+        return 1;
     }
 
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    int sockfd, server_sync_sockfd;
+    struct sockaddr_in serv_addr, serv_sync_addr;
+    struct hostent *server;
+    char buffer[MESSAGE_SIZE + 1];
+    pthread_t user_input_listener_thread, sync_thread;
+    struct stat st = {0};
+
+
+    // If arguments are wrong, end client
+    if(argc != 3)
+    {
+        fprintf(stderr,"usage %s username hostname\n", argv[0]);
+        return 1;
+    }
+
+    // If username exceeds USERNAME_MAX_SIZE, end client
+    if(strlen(argv[1]) > USERNAME_MAX_SIZE)
+    {
+        fprintf(stderr, "Max username size permitted: %d\n", USERNAME_MAX_SIZE);
+        return 1;
+    }
+
+    // If server doesnt exist, end client    
+    server = gethostbyname(argv[2]);
+    if(server == NULL)
+    {
+        fprintf(stderr, "ERROR, no such host\n");
+        return 1;
+    }
+
+    // If sockets setup fails, end client
+    if(sockets_setup(&sockfd, &server_sync_sockfd, &serv_addr, &serv_sync_addr, server))
+        return 1;
+
+    // If connection fails, end client
+    if(establish_connection(sockfd, server_sync_sockfd, argv[1]))
+        return 1;
+
     // Get sync dir
-    bzero(sync_dir_path, 256);
     strcpy(sync_dir_path, "sync_dir_");
     strcat(sync_dir_path, username);
     get_sync_dir(sockfd);
@@ -387,7 +436,6 @@ int main(int argc, char *argv[])
         }
         pthread_mutex_unlock(&user_input_listener_lock);
 
-
         // Handle client side user input
         if(strstr(buffer, "upload")) // Upload command
             handle_upload(sockfd, buffer);
@@ -408,6 +456,13 @@ int main(int argc, char *argv[])
     // Sends exit request
     strcpy(buffer, "exit");
     send_msg(sockfd, buffer);
+
+    // If user sync dir exist, remote it
+    if (stat(sync_dir_path, &st) == 0)
+    {
+        rmrf(sync_dir_path);
+        printf("Sync dir deleted\n");
+    }
         
     close(sockfd);
     close(server_sync_sockfd);

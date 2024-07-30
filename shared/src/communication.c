@@ -3,7 +3,6 @@
 
 
 
-
 /* reverse:  reverse string s in place */
 void reverse(char s[])
 {
@@ -33,7 +32,7 @@ void itoa(int n, char s[])
     reverse(s);
 }
 
-int send_msg(int sockfd, char buffer[MESSAGE_SIZE])
+int send_msg(int sockfd, char buffer[MESSAGE_SIZE + 1])
 {
     int bytes_written = 0;
     int total_bytes_written = 0;
@@ -42,7 +41,7 @@ int send_msg(int sockfd, char buffer[MESSAGE_SIZE])
 
     while(total_bytes_written < MESSAGE_SIZE)
     {
-        bytes_written = write(sockfd, buffer, MESSAGE_SIZE);
+        bytes_written = write(sockfd, buffer, MESSAGE_SIZE - total_bytes_written);
 
         if(bytes_written < 0)
         {
@@ -58,14 +57,14 @@ int send_msg(int sockfd, char buffer[MESSAGE_SIZE])
     return 0;
 }
 
-int receive_msg(int sockfd, char buffer[MESSAGE_SIZE])
+int receive_msg(int sockfd, char buffer[MESSAGE_SIZE + 1])
 {
     int bytes_read = 0;
     int total_bytes_read = 0;
 
     while(total_bytes_read < MESSAGE_SIZE)
     {
-        bytes_read = read(sockfd, buffer, MESSAGE_SIZE);
+        bytes_read = read(sockfd, buffer, MESSAGE_SIZE - total_bytes_read);
 
         if(bytes_read < 0)
         {
@@ -87,12 +86,12 @@ int send_file(int sockfd, FILE* fp, unsigned int file_size)
     int total_bytes_written = 0;
     int number_of_chunks;
     int chunk_remaining;
-    char temp_buffer[MESSAGE_SIZE];
+    char temp_buffer[MESSAGE_SIZE + 1];
     int i = 0;
 
     number_of_chunks = file_size / MESSAGE_SIZE;
     chunk_remaining = file_size % MESSAGE_SIZE;
-    bzero(temp_buffer, MESSAGE_SIZE);
+    bzero(temp_buffer, MESSAGE_SIZE + 1);
 
     printf("Chunks: %d\n", number_of_chunks);
     printf("Remaining: %d\n", chunk_remaining);
@@ -146,12 +145,12 @@ int receive_file(int sockfd, FILE* fp, unsigned int file_size)
     int total_bytes_read = 0;
     int number_of_chunks;
     int chunk_remaining;
-    char temp_buffer[MESSAGE_SIZE];
+    char temp_buffer[MESSAGE_SIZE + 1];
     int i = 0;
 
     number_of_chunks = file_size / MESSAGE_SIZE;
     chunk_remaining = file_size % MESSAGE_SIZE;
-    bzero(temp_buffer, MESSAGE_SIZE);
+    bzero(temp_buffer, MESSAGE_SIZE + 1);
 
     printf("Chunks: %d\n", number_of_chunks);
     printf("Remaining: %d\n", chunk_remaining);
@@ -199,16 +198,3 @@ int receive_file(int sockfd, FILE* fp, unsigned int file_size)
 
     return 0;
 }
-
-/*
-int main()
-{
-    int sockfd;
-    FILE* fp = NULL;
-    unsigned int file_size = 10 * 1024*1024 + 256;
-
-    send_file(sockfd, fp, file_size);
-
-    return 0;
-}
-*/

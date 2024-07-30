@@ -88,7 +88,7 @@ User get_user(UserList *list, char* username)
 	return list->user;
 }
 
-void increase_user_session(UserList *list, char* username)
+void increase_user_session(UserList *list, char* username, int sockfd, int server_sync_sockfd)
 {
 	if (!list) return;
 	 
@@ -96,6 +96,8 @@ void increase_user_session(UserList *list, char* username)
 	for (auxNode = list; auxNode; auxNode = auxNode->next) {
 		if (strcmp(username, auxNode->user.username) == 0) {
 			auxNode->user.sessions_amount = auxNode->user.sessions_amount + 1;
+			auxNode->user.all_sessions_sockets[auxNode->user.sessions_amount - 1][0] = sockfd;
+			auxNode->user.all_sessions_sockets[auxNode->user.sessions_amount - 1][1] = server_sync_sockfd;
 		}
 	}
 }
@@ -133,6 +135,30 @@ void turn_off_user_sync_notification(UserList *list, char* username)
 	for (auxNode = list; auxNode; auxNode = auxNode->next) {
 		if (strcmp(username, auxNode->user.username) == 0) {
 			auxNode->user.sync_needed = 0;
+		}
+	}
+}
+
+void turn_on_user_deletion_notification(UserList *list, char* username)
+{
+	if (!list) return;
+	 
+	UserList *auxNode;
+	for (auxNode = list; auxNode; auxNode = auxNode->next) {
+		if (strcmp(username, auxNode->user.username) == 0) {
+			auxNode->user.deletion_needed = 1;
+		}
+	}
+}
+
+void turn_off_user_deletion_notification(UserList *list, char* username)
+{
+	if (!list) return;
+	 
+	UserList *auxNode;
+	for (auxNode = list; auxNode; auxNode = auxNode->next) {
+		if (strcmp(username, auxNode->user.username) == 0) {
+			auxNode->user.deletion_needed = 0;
 		}
 	}
 }
