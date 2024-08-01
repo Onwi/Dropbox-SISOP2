@@ -1,8 +1,6 @@
 #include "../include/communication.h"
 
 
-
-
 /* reverse:  reverse string s in place */
 void reverse(char s[])
 {
@@ -96,7 +94,6 @@ int send_file(int sockfd, FILE* fp, unsigned int file_size)
     printf("Chunks: %d\n", number_of_chunks);
     printf("Remaining: %d\n", chunk_remaining);
 
-
     // Sends all complete chunks
     for(i = 0; i < number_of_chunks; i++)
     {
@@ -107,6 +104,8 @@ int send_file(int sockfd, FILE* fp, unsigned int file_size)
         while(total_bytes_written < MESSAGE_SIZE)
         {
             bytes_written = write(sockfd, temp_buffer, MESSAGE_SIZE - total_bytes_written);
+
+            printf("Bytes written: %d\n", bytes_written);
 
             if(bytes_written < 0)
             {
@@ -127,6 +126,8 @@ int send_file(int sockfd, FILE* fp, unsigned int file_size)
     {
         bytes_written = write(sockfd, temp_buffer, chunk_remaining - total_bytes_written);
 
+        printf("Bytes written: %d\n", bytes_written);
+
         if(bytes_written < 0)
         {
             fprintf(stderr, "ERROR sending file data\n");
@@ -135,6 +136,8 @@ int send_file(int sockfd, FILE* fp, unsigned int file_size)
 
         total_bytes_written += bytes_written;
     }
+
+    printf("File data sent.\n");
 
     return 0;
 }
@@ -153,8 +156,7 @@ int receive_file(int sockfd, FILE* fp, unsigned int file_size)
     bzero(temp_buffer, MESSAGE_SIZE + 1);
 
     printf("Chunks: %d\n", number_of_chunks);
-    printf("Remaining: %d\n", chunk_remaining);
-    
+    printf("Remaining: %d\n", chunk_remaining);    
 
     // Gets all complete chunks
     for(i = 0; i < number_of_chunks; i++)
@@ -164,6 +166,8 @@ int receive_file(int sockfd, FILE* fp, unsigned int file_size)
         while(total_bytes_read < MESSAGE_SIZE)
         {
             bytes_read = read(sockfd, temp_buffer, MESSAGE_SIZE - total_bytes_read);
+
+            printf("Bytes read: %d\n", bytes_read);
 
             if(bytes_read < 0)
             {
@@ -177,13 +181,14 @@ int receive_file(int sockfd, FILE* fp, unsigned int file_size)
         fwrite(temp_buffer, 1, MESSAGE_SIZE, fp);
     }
 
-
     // Gets last chunk
     total_bytes_read = 0;
 
     while(total_bytes_read < chunk_remaining)
     {
         bytes_read = read(sockfd, temp_buffer, chunk_remaining - total_bytes_read);
+
+        printf("Bytes read: %d\n", bytes_read);
 
         if(bytes_read < 0)
         {
@@ -195,6 +200,8 @@ int receive_file(int sockfd, FILE* fp, unsigned int file_size)
     }
 
     fwrite(temp_buffer, 1, chunk_remaining, fp);
+
+    printf("File data received.\n");
 
     return 0;
 }

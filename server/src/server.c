@@ -1,26 +1,8 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <stdbool.h>
-#include <sys/types.h> 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <pthread.h>
-#include <sys/stat.h>
-#include <dirent.h>
-
+#include "../../shared/include/communication.h"
+#include "../../shared/include/definitions.h"
 #include "../include/user.h"
 #include "../include/thread_list.h"
-#include "../../shared/include/communication.h"
-
-#define PORT 4000
-#define SERVER_SYNC_PORT 4001
-#define USERNAME_READ_ERROR 1001
-#define SESSION_LIMIT_ERROR 1002
-#define SESSION_FINISHED 1003
-#define USER_EXIT 1004
-#define USERNAME_MAX_SIZE 32
+#include <dirent.h>
 
 
 UserList* user_list;
@@ -39,9 +21,9 @@ typedef struct sockets
 	int server_sync_sockfd;
 } SOCKETS;
 
-void handle_sync_download(int new_server_sync_sockfd, char file_name[256], char username[USERNAME_MAX_SIZE + 1])
+void handle_sync_download(int new_server_sync_sockfd, char file_name[FILE_NAME_MAX_SIZE + 1], char username[USERNAME_MAX_SIZE + 1])
 {
-	char file_path[256];
+	char file_path[FILE_PATH_MAX_SIZE + 1];
 	char buffer[MESSAGE_SIZE + 1];
   	FILE *fp;
 	unsigned int file_size;
@@ -61,7 +43,7 @@ void handle_sync_download(int new_server_sync_sockfd, char file_name[256], char 
 	{
 		strcpy(buffer, "0");
 		printf("size: %s\n", buffer);
-		send_msg(new_server_sync_sockfd, buffer); // Sends file size = "0"
+		send_msg(new_server_sync_sockfd, buffer); // Send file size = "0"
 		return;
 	}
 
@@ -73,74 +55,29 @@ void handle_sync_download(int new_server_sync_sockfd, char file_name[256], char 
 
 	printf("size: %s\n", buffer);
 
-	send_msg(new_server_sync_sockfd, buffer); // Sends file size
-	send_msg(new_server_sync_sockfd, file_name); // Sends file name
-	send_file(new_server_sync_sockfd, fp, atoi(buffer)); // Sends file data
+	// Send file size
+	send_msg(new_server_sync_sockfd, buffer);
+
+	// Send file name
+	strcpy(buffer, file_name);
+	send_msg(new_server_sync_sockfd, buffer);
+
+	// Send file data
+	send_file(new_server_sync_sockfd, fp, file_size);
 
 	fclose(fp);
 	return;
 }
 
-void *server_sync_handler(void *arg)
-{
-	struct sync_struct my_sync_struct  = *(struct sync_struct *) arg;
-	int th_sync_needed;
-	//int th_deletion_needed;
-	char synch_buffer[MESSAGE_SIZE + 1];
-	int new_server_sync_sockfd;
-	char username[USERNAME_MAX_SIZE + 1];
-	User user;
-	int i;
-
-	bzero(synch_buffer, MESSAGE_SIZE + 1);
-
-	new_server_sync_sockfd = my_sync_struct.socket;
-	strcpy(username, my_sync_struct.username);
-
-	while(1)
-	{
-		pthread_mutex_lock(&lock);
-		user = get_user(user_list, username);
-		th_sync_needed = user.sync_needed;
-		//th_deletion_needed = user.deletion_needed;
-		pthread_mutex_unlock(&lock);
-
-		if(th_sync_needed)
-		{
-			printf("Need synch: %s\n", user.file_name_sync);			
-
-			pthread_mutex_lock(&lock);
-			for(i = 0; i < user.sessions_amount; i++)
-				handle_sync_download(user.all_sessions_sockets[i][1], user.file_name_sync, username);
-
-			turn_off_user_sync_notification(user_list, username);
-			pthread_mutex_unlock(&lock);
-		}
-		/*
-		else if(th_deletion_needed)
-		{
-			pthread_mutex_lock(&lock);
-			for(i = 0; i < user.sessions_amount; i++)
-				delete_propagation(user.all_sessions_sockets[i][1], );
-			turn_off_user_deletion_notification(user_list, username);
-			pthread_mutex_unlock(&lock);
-		}
-		*/
-	}
-	
-	close(new_server_sync_sockfd);
-	int val = SESSION_FINISHED;
-	pthread_exit(&val);
-}
-
-
 void handle_download(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username[USERNAME_MAX_SIZE + 1])
 {
-	char file_name[256], file_path[256];
+	char file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
   	FILE *fp;
 	unsigned int file_size;
 
-	receive_msg(newsockfd, file_name); // Gets file name
+	// Get file name
+	receive_msg(newsockfd, buffer);
+	strcpy(file_name, buffer);
 
 	printf("User wants to download: %s\n", file_name);
 
@@ -157,7 +94,7 @@ void handle_download(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username
 	{
 		strcpy(buffer, "0");
 		printf("size: %s\n", buffer);
-		send_msg(newsockfd, buffer); // Sends file size
+		send_msg(newsockfd, buffer); // Send file size
 		return;
 	}
 
@@ -168,9 +105,9 @@ void handle_download(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username
 	itoa(file_size, buffer);
 
 	printf("size: %s\n", buffer);
-	send_msg(newsockfd, buffer); // Sends file size
+	send_msg(newsockfd, buffer); // Send file size
 
-	send_file(newsockfd, fp, atoi(buffer)); // Sends file data
+	send_file(newsockfd, fp, atoi(buffer)); // Send file data
 
 	fclose(fp);
 	return;
@@ -182,7 +119,7 @@ void get_sync_dir(int newsockfd, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1])
 	DIR *dp;
 	struct dirent *ep;
 	char buffer[MESSAGE_SIZE + 1];
-	char file_path[256]; 
+	char file_path[FILE_PATH_MAX_SIZE + 1]; 
 	struct stat st = {0};
 	FILE* fp;
 	unsigned int file_size;
@@ -254,21 +191,33 @@ void get_sync_dir(int newsockfd, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1])
 			fclose(fp);
 		}
 }
-/*
-void delete_propagation(char username[USERNAME_MAX_SIZE + 1], char file_path[256])
+
+void delete_propagation(char username[USERNAME_MAX_SIZE + 1], char file_path[FILE_PATH_MAX_SIZE + 1])
 {
 	User user;
+    int i;
+    char buffer[MESSAGE_SIZE + 1];
 
 	pthread_mutex_lock(&lock);
 	user = get_user(user_list, username);
 	pthread_mutex_unlock(&lock);
 
+    for(i = 0; i < user.sessions_amount; i++)
+    {
+        // Send synchronization type
+        strcpy(buffer, "Delete");
+        send_msg(user.all_sessions_sockets[i][1], buffer);
 
+        // Send file name
+        strcpy(buffer, file_path);
+        printf("File path: %s\n", buffer);
+        send_msg(user.all_sessions_sockets[i][1], buffer);
+    }
 }
-*/
+
 void handle_delete(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username[USERNAME_MAX_SIZE + 1])
 {
-    char file_name[256], file_path[256];
+    char file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
     
     receive_msg(newsockfd, buffer); // Get file name
     strcpy(file_name, buffer);
@@ -282,7 +231,7 @@ void handle_delete(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username[U
     if(remove(file_path) == 0)
 	{
         printf("File %s deleted\n", file_name);
-		//delete_propagation(username, file_path);
+		delete_propagation(username, file_path);
 	}
     else
         printf("Could not delete %s\n", file_name);
@@ -290,16 +239,19 @@ void handle_delete(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username[U
 
 void handle_upload(int newsockfd, User user, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1])
 {
-	char buffer[MESSAGE_SIZE + 1], file_name[256], file_path[256];
+	char buffer[MESSAGE_SIZE + 1], file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
 	unsigned int file_size;
 	FILE* fp;
     int i;
+
+	printf("Inside: %d\n", user.sessions_amount);
 	
 	// Get file name
 	receive_msg(newsockfd, buffer);
 	strcpy(file_name, buffer);
 	printf("File name: %s\n", file_name);
 
+    // Create file path
 	strcpy(file_path, sync_dir_path);
 	strcat(file_path, "/");
 	strcat(file_path, file_name);
@@ -315,16 +267,15 @@ void handle_upload(int newsockfd, User user, char sync_dir_path[9 + USERNAME_MAX
 	// Get file data
 	receive_file(newsockfd, fp, file_size);
 
-	// Get name for sync notification
-	//receive_msg(newsockfd, buffer);
-
+    // Open file on "rb" mode
     fclose(fp);
     fp = fopen(file_path, "rb");
 
     // Upload propagation
     for(i = 0; i < user.sessions_amount; i++)
     {
-        printf("User sessions: %d", user.sessions_amount);
+        printf("User sessions: %d\n", user.sessions_amount);
+
         // Send synchronization type
         strcpy(buffer, "Upload");
         send_msg(user.all_sessions_sockets[i][1], buffer);
@@ -334,17 +285,14 @@ void handle_upload(int newsockfd, User user, char sync_dir_path[9 + USERNAME_MAX
         send_msg(user.all_sessions_sockets[i][1], buffer);
 
         // Send file name
-        send_msg(user.all_sessions_sockets[i][1], file_name);
+		strcpy(buffer, file_name);
+        send_msg(user.all_sessions_sockets[i][1], buffer);
 
         // Sends file data
         send_file(user.all_sessions_sockets[i][1], fp, file_size);
 
         rewind(fp);
     }
-
-	//pthread_mutex_lock(&lock);
-	//set_user_sync_notification(user_list, buffer, file_name);
-	//pthread_mutex_unlock(&lock);
 
 	fclose(fp);
 }
@@ -356,8 +304,6 @@ void *user_thread(void *arg) {
 	char th_buffer[MESSAGE_SIZE + 1];
 	char sync_dir_path[9 + USERNAME_MAX_SIZE + 1];
 	int th_return_value;
-	//pthread_t server_sync_thread;
-	struct sync_struct my_sync_struct;
 
 
     new_sockets = *(SOCKETS*) arg;
@@ -400,31 +346,22 @@ void *user_thread(void *arg) {
 			pthread_mutex_unlock(&lock);
 			pthread_exit(&val);
 		}
- 
 		increase_user_session(user_list, th_user.username, new_sockets.sockfd, new_sockets.server_sync_sockfd);
+		th_user = get_user(user_list, th_user.username);
 		pthread_mutex_unlock(&lock);
 	}
 	printf("Setting to index: %d\n", th_user.sessions_amount - 1);
 
-	//pthread_mutex_lock(&lock);
-	//th_user = get_user(user_list, th_buffer);
-	//set_all_sessions_sockets(user_list, th_user.username, newsockfd, new_server_sync_sockfd, th_user.sessions_amount - 1);
-	//pthread_mutex_unlock(&lock);
-
 	print_user_list(user_list);
 
+    // Send ok to client
 	strcpy(th_buffer, "Connected");
-	send_msg(newsockfd, th_buffer); // Send ok to client
+	send_msg(newsockfd, th_buffer);
 
 	// Create and synchronize sync dir
 	strcpy(sync_dir_path, "sync_dir_");
 	strcat(sync_dir_path, th_user.username);
 	get_sync_dir(newsockfd, sync_dir_path);
-
-	// Create Sync thread
-	my_sync_struct.socket = new_server_sync_sockfd;
-	strcpy(my_sync_struct.username, th_user.username);
-	//pthread_create(&server_sync_thread, NULL, server_sync_handler, &my_sync_struct);
 
 	while(1)
 	{
@@ -437,7 +374,11 @@ void *user_thread(void *arg) {
 		if (strstr(th_buffer, "upload")) // Handle upload
 		{
 			printf("User wants to upload\n");
+
+			pthread_mutex_lock(&lock);
+			th_user = get_user(user_list, th_user.username);
 			handle_upload(newsockfd, th_user, sync_dir_path);
+			pthread_mutex_unlock(&lock);
 		}
 		else if(strstr(th_buffer, "download")) // Handle download
 		{

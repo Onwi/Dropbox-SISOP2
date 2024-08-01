@@ -114,68 +114,6 @@ void decrease_user_session(UserList *list, char* username)
 	}
 }
 
-void set_user_sync_notification(UserList *list, char* username, char file_name_sync[256])
-{
-	if (!list) return;
-	 
-	UserList *auxNode;
-	for (auxNode = list; auxNode; auxNode = auxNode->next) {
-		if (strcmp(username, auxNode->user.username) == 0) {
-			auxNode->user.sync_needed = 1;
-			strcpy(auxNode->user.file_name_sync, file_name_sync);
-		}
-	}
-}
-
-void turn_off_user_sync_notification(UserList *list, char* username)
-{
-	if (!list) return;
-	 
-	UserList *auxNode;
-	for (auxNode = list; auxNode; auxNode = auxNode->next) {
-		if (strcmp(username, auxNode->user.username) == 0) {
-			auxNode->user.sync_needed = 0;
-		}
-	}
-}
-
-void turn_on_user_deletion_notification(UserList *list, char* username)
-{
-	if (!list) return;
-	 
-	UserList *auxNode;
-	for (auxNode = list; auxNode; auxNode = auxNode->next) {
-		if (strcmp(username, auxNode->user.username) == 0) {
-			auxNode->user.deletion_needed = 1;
-		}
-	}
-}
-
-void turn_off_user_deletion_notification(UserList *list, char* username)
-{
-	if (!list) return;
-	 
-	UserList *auxNode;
-	for (auxNode = list; auxNode; auxNode = auxNode->next) {
-		if (strcmp(username, auxNode->user.username) == 0) {
-			auxNode->user.deletion_needed = 0;
-		}
-	}
-}
-
-void set_all_sessions_sockets(UserList *list, char* username, int newsockfd, int new_server_sync_sockfd, int i)
-{
-	if (!list) return;
-	 
-	UserList *auxNode;
-	for (auxNode = list; auxNode; auxNode = auxNode->next) {
-		if (strcmp(username, auxNode->user.username) == 0) {
-			auxNode->user.all_sessions_sockets[i][0] = newsockfd;
-			auxNode->user.all_sessions_sockets[i][1] = new_server_sync_sockfd;
-		}
-	}
-}
-
 bool search_user(UserList *list, char* username) {
 	if (!list) return false;
 	 
@@ -199,7 +137,7 @@ void print_user_list(UserList *list) {
 		printf("Sessions: %d\n", auxNode->user.sessions_amount);
 		
 		for(i = 0; i < auxNode->user.sessions_amount; i++)
-			printf("Al sockets: %d and %d\n", auxNode->user.all_sessions_sockets[i][0], auxNode->user.all_sessions_sockets[i][1]);
+			printf("All sockets: %d and %d\n", auxNode->user.all_sessions_sockets[i][0], auxNode->user.all_sessions_sockets[i][1]);
 		auxNode = auxNode->next;
 	}
 }

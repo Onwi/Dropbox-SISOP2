@@ -1,32 +1,16 @@
-#define _XOPEN_SOURCE 500
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include "../../shared/include/definitions.h"
+#include "../../shared/include/communication.h"
 #include <netdb.h>
-#include <pthread.h>
-#include <unistd.h>
-#include <sys/stat.h>
 #include <dirent.h>
 #include <time.h>
 #include <ftw.h>
 
-#include "../../shared/include/communication.h"
-
-
-#define PORT 4000
-#define SERVER_SYNC_PORT 4001
-#define USERNAME_MAX_SIZE 32
-#define USER_INPUT_MAX_SIZE 256
 
 int new_input_notification = 0;
 char user_input[USER_INPUT_MAX_SIZE + 1];
 char sync_dir_path[9 + USERNAME_MAX_SIZE + 1];
 char username[USERNAME_MAX_SIZE + 1];
-pthread_mutex_t lock, user_feedback_lock, user_input_listener_lock;
+pthread_mutex_t lock, user_input_listener_lock;
 
 
 void* user_input_handler(void* args)
@@ -35,12 +19,15 @@ void* user_input_handler(void* args)
 
     while(1)
     {
-        pthread_mutex_lock(&user_feedback_lock);
-        printf("User input: ");
-        pthread_mutex_unlock(&user_feedback_lock);
-        
         bzero(th_user_input, USER_INPUT_MAX_SIZE + 1);
-        fgets(th_user_input, USER_INPUT_MAX_SIZE, stdin);
+        do
+        {
+            printf("User input: ");
+            fgets(th_user_input, USER_INPUT_MAX_SIZE + 1, stdin);
+            printf("Input: %s\n", th_user_input);
+            printf("Size: %ld\n", strlen(th_user_input));
+        }
+        while(strcmp(th_user_input, "\n") == 0 || strlen(th_user_input) == 0 || strlen(th_user_input) >= USER_INPUT_MAX_SIZE);
 
         pthread_mutex_lock(&user_input_listener_lock);
         bzero(user_input, USER_INPUT_MAX_SIZE + 1);
@@ -57,7 +44,7 @@ void* server_sync_handler(void* args)
     int server_sync_sockfd;
     unsigned int file_size;
     char buffer[MESSAGE_SIZE + 1];
-    char file_path[256];
+    char file_path[FILE_PATH_MAX_SIZE + 1];
     FILE* fp;
 
 
@@ -70,14 +57,14 @@ void* server_sync_handler(void* args)
 
         if(strcmp(buffer, "Upload") == 0)
         {
-            receive_msg(server_sync_sockfd, buffer); // Gets file size
+            receive_msg(server_sync_sockfd, buffer); // Get file size
             printf("Buffer: %s\n", buffer);
             file_size = atoi(buffer);
             printf("File size: %d\n", file_size);
 
             printf("Needs synch AQUIIIIIIIIIIIIIIIIIIIIIIIII\n");
         
-            receive_msg(server_sync_sockfd, buffer); // Gets file name
+            receive_msg(server_sync_sockfd, buffer); // Get file name
 
             strcpy(file_path, "sync_dir_");
             strcat(file_path, username);
@@ -93,7 +80,7 @@ void* server_sync_handler(void* args)
 
             printf("File path: %s\n", file_path);
 
-            receive_file(server_sync_sockfd, fp, file_size); // Gets file data
+            receive_file(server_sync_sockfd, fp, file_size); // Get file data
 
             printf("Received file: %s\n", file_path);
 
@@ -101,7 +88,12 @@ void* server_sync_handler(void* args)
         }
         else if(strcmp(buffer, "Delete") == 0)
         {
+            // Get file path
+            receive_msg(server_sync_sockfd, buffer);
+            strcpy(file_path, buffer);
+            printf("File path: %s\n", buffer);
 
+            remove(file_path);
         }
     }
 }
@@ -162,8 +154,8 @@ void get_sync_dir(int sockfd)
     int number_of_files, i;
     FILE* fp;
     char buffer[MESSAGE_SIZE + 1];
-    char file_name[256];
-    char file_path[256];
+    char file_name[FILE_NAME_MAX_SIZE + 1];
+    char file_path[FILE_PATH_MAX_SIZE + 1];
     unsigned int file_size;
     struct stat st = {0};  
 
@@ -209,7 +201,8 @@ void handle_upload(int sockfd, char buffer[MESSAGE_SIZE + 1])
 {
     unsigned int file_size;
     FILE* fp;
-    char file_path[256], file_name[256];
+    char file_path[FILE_PATH_MAX_SIZE + 1], file_name[FILE_NAME_MAX_SIZE + 1];
+
 
     strcpy(file_path, &buffer[7]); // Get file path from user input
     file_path[strcspn(file_path, "\n")] = 0; // Remove '\n'
@@ -252,9 +245,9 @@ void handle_upload(int sockfd, char buffer[MESSAGE_SIZE + 1])
     fclose(fp);
 }
 
-void handle_download(int sockfd, char buffer[256])
+void handle_download(int sockfd, char buffer[MESSAGE_SIZE + 1])
 {
-    char file_name[256];
+    char file_name[FILE_NAME_MAX_SIZE + 1];
     FILE *fp;
 
     strcpy(file_name, &buffer[9]);
@@ -264,9 +257,13 @@ void handle_download(int sockfd, char buffer[256])
 
     printf("User wants to download: %s\n", file_name);
 
-    send_msg(sockfd, buffer); // Sends download request
-    send_msg(sockfd, file_name); // Sends file name
-    receive_msg(sockfd, buffer); // Gets file size
+    // Send download request
+    send_msg(sockfd, buffer);
+
+    // Send file name
+    strcpy(buffer, file_name);
+    send_msg(sockfd, buffer);
+    receive_msg(sockfd, buffer); // Get file size
 
 
     if (strcmp(buffer, "0") == 0)
@@ -282,16 +279,20 @@ void handle_download(int sockfd, char buffer[256])
     return;
 }
 
-void handle_delete(int sockfd, char buffer[256])
+void handle_delete(int sockfd, char buffer[MESSAGE_SIZE + 1])
 {
-    char file_name[256], file_path[256];
+    char file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
 
 
     buffer[strcspn(buffer, "\n")] = 0; // Remove '\n'
     strcpy(file_name, &buffer[7]);  
 
-    send_msg(sockfd, buffer); // Send delete request
-    send_msg(sockfd, file_name); // Send file name
+    // Send delete request
+    send_msg(sockfd, buffer);
+
+    // Send file name
+    strcpy(buffer, file_name);
+    send_msg(sockfd, buffer);
 
     // Create path to file being deleted
     strcpy(file_path, sync_dir_path);
@@ -437,16 +438,16 @@ int main(int argc, char *argv[])
         pthread_mutex_unlock(&user_input_listener_lock);
 
         // Handle client side user input
-        if(strstr(buffer, "upload")) // Upload command
+        if(strstr(buffer, "upload ")) // Upload command
             handle_upload(sockfd, buffer);
 
-        else if(strstr(buffer, "download")) // Download command
+        else if(strstr(buffer, "download ")) // Download command
             handle_download(sockfd, buffer);
 
         else if(strstr(buffer, "list_client")) // List client command
             handle_list_client();
 
-        else if(strstr(buffer, "delete")) // Remove command
+        else if(strstr(buffer, "delete ")) // Remove command
             handle_delete(sockfd, buffer);
         
         else if(strstr(buffer, "exit")) // Exit command
