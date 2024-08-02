@@ -1,5 +1,6 @@
 #include "../../shared/include/definitions.h"
 #include "../../shared/include/communication.h"
+#include <string.h>
 #include <netdb.h>
 #include <dirent.h>
 #include <time.h>
@@ -104,6 +105,7 @@ void handle_list_client()
     struct dirent *ep;   
     dp = opendir (sync_dir_path);
     struct stat st;// = {0};
+    char file_path[FILE_PATH_MAX_SIZE + 1];
 
 
     if(!dp)
@@ -120,7 +122,11 @@ void handle_list_client()
         else
         {
             //st = (struct stat*) malloc(sizeof(struct stat));
-            stat(ep->d_name, &st);
+            strcpy(file_path, sync_dir_path);
+            strcat(file_path, "/");
+            strcat(file_path, ep->d_name);
+            printf("File path: %s\n", file_path);
+            stat(file_path, &st);
             printf("%s\n", ep->d_name);
 
             //printf("atime = %d\nmtime = %d\nctime = %d\n", atime, mtime, ctime);
@@ -237,10 +243,6 @@ void handle_upload(int sockfd, char buffer[MESSAGE_SIZE + 1])
 
     // Send file data
     send_file(sockfd, fp, file_size);
-
-    // Send name for sync notification
-    //strcpy(buffer, username);
-    //send_msg(sockfd, buffer);
 
     fclose(fp);
 }

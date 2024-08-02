@@ -21,54 +21,6 @@ typedef struct sockets
 	int server_sync_sockfd;
 } SOCKETS;
 
-void handle_sync_download(int new_server_sync_sockfd, char file_name[FILE_NAME_MAX_SIZE + 1], char username[USERNAME_MAX_SIZE + 1])
-{
-	char file_path[FILE_PATH_MAX_SIZE + 1];
-	char buffer[MESSAGE_SIZE + 1];
-  	FILE *fp;
-	unsigned int file_size;
-
-	printf("Sync file: %s\n", file_name);
-
-	strcpy(file_path, "sync_dir_");
-	strcat(file_path, username);
-	strcat(file_path, "/");
-	strcat(file_path, file_name);
-
-	printf("Whole path: %s\n", file_path);
-
-	fp = fopen(file_path, "rb");
-
-	if(!fp)
-	{
-		strcpy(buffer, "0");
-		printf("size: %s\n", buffer);
-		send_msg(new_server_sync_sockfd, buffer); // Send file size = "0"
-		return;
-	}
-
-	// Compute file dize
-	fseek(fp, 0L, SEEK_END);
-	file_size = ftell(fp);
-	rewind(fp);
-	itoa(file_size, buffer);
-
-	printf("size: %s\n", buffer);
-
-	// Send file size
-	send_msg(new_server_sync_sockfd, buffer);
-
-	// Send file name
-	strcpy(buffer, file_name);
-	send_msg(new_server_sync_sockfd, buffer);
-
-	// Send file data
-	send_file(new_server_sync_sockfd, fp, file_size);
-
-	fclose(fp);
-	return;
-}
-
 void handle_download(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username[USERNAME_MAX_SIZE + 1])
 {
 	char file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
