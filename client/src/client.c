@@ -1,5 +1,6 @@
 #include "../../shared/include/definitions.h"
 #include "../../shared/include/communication.h"
+#include "../include/inotify.h"
 #include <string.h>
 #include <netdb.h>
 #include <dirent.h>
@@ -380,7 +381,8 @@ int main(int argc, char *argv[])
     struct sockaddr_in serv_addr, serv_sync_addr;
     struct hostent *server;
     char buffer[MESSAGE_SIZE + 1];
-    pthread_t user_input_listener_thread, sync_thread;
+
+    pthread_t user_input_listener_thread, sync_thread, sync_dir_listener_thread;
     struct stat st = {0};
 
 
@@ -424,6 +426,8 @@ int main(int argc, char *argv[])
 
     // Create sync thread
     pthread_create(&sync_thread, NULL, server_sync_handler, &server_sync_sockfd);
+
+    pthread_create(&sync_dir_listener_thread, NULL, listen_inotify, sync_dir_path);
 
     // User input handler
     while(1)
