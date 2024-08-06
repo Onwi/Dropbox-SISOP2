@@ -12,7 +12,7 @@ int new_input_notification = 0;
 char user_input[USER_INPUT_MAX_SIZE + 1];
 char sync_dir_path[9 + USERNAME_MAX_SIZE + 1];
 char username[USERNAME_MAX_SIZE + 1];
-pthread_mutex_t lock, user_input_listener_lock;
+pthread_mutex_t upload_lock, user_input_listener_lock, delete_lock;
 
 
 void* user_input_handler(void* args)
@@ -288,7 +288,7 @@ void handle_delete(int sockfd, char buffer[MESSAGE_SIZE + 1])
 
 
     buffer[strcspn(buffer, "\n")] = 0; // Remove '\n'
-    strcpy(file_name, &buffer[7]);  
+    strcpy(file_name, &buffer[7]);
 
     // Send delete request
     send_msg(sockfd, buffer);
@@ -381,6 +381,7 @@ int main(int argc, char *argv[])
     struct sockaddr_in serv_addr, serv_sync_addr;
     struct hostent *server;
     char buffer[MESSAGE_SIZE + 1];
+    struct sync_dir_listener_struct my_sync_dir_listener_struct;
 
     pthread_t user_input_listener_thread, sync_thread, sync_dir_listener_thread;
     struct stat st = {0};
@@ -427,7 +428,10 @@ int main(int argc, char *argv[])
     // Create sync thread
     pthread_create(&sync_thread, NULL, server_sync_handler, &server_sync_sockfd);
 
-    pthread_create(&sync_dir_listener_thread, NULL, listen_inotify, sync_dir_path);
+    // Create sync dir listener thread
+    my_sync_dir_listener_struct.sockfd = sockfd;
+    strcpy(my_sync_dir_listener_struct.dir_path, sync_dir_path);
+    pthread_create(&sync_dir_listener_thread, NULL, listen_inotify, &my_sync_dir_listener_struct);
 
     // User input handler
     while(1)
@@ -445,7 +449,11 @@ int main(int argc, char *argv[])
 
         // Handle client side user input
         if(strstr(buffer, "upload ")) // Upload command
-            handle_upload(sockfd, buffer);
+            {
+                pthread_mutex_lock(&upload_lock);
+                handle_upload(sockfd, buffer);
+                pthread_mutex_unlock(&upload_lock);
+            }
 
         else if(strstr(buffer, "download ")) // Download command
             handle_download(sockfd, buffer);
@@ -454,7 +462,11 @@ int main(int argc, char *argv[])
             handle_list_client();
 
         else if(strstr(buffer, "delete ")) // Remove command
-            handle_delete(sockfd, buffer);
+            {
+                pthread_mutex_lock(&delete_lock);
+                handle_delete(sockfd, buffer);
+                pthread_mutex_unlock(&delete_lock);
+            }
         
         else if(strstr(buffer, "exit")) // Exit command
             break;

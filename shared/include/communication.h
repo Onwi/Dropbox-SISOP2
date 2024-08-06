@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <sys/stat.h>
+#include <netdb.h>
 
 #define MESSAGE_SIZE 256
 #define bzero(ptr, size) memset(ptr, 0, size)
