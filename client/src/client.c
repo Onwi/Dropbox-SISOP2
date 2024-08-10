@@ -1,19 +1,26 @@
 #include "../../shared/include/definitions.h"
 #include "../../shared/include/communication.h"
 #include "../include/inotify.h"
-#include <string.h>
-#include <netdb.h>
-#include <dirent.h>
 #include <time.h>
 #include <ftw.h>
 
 
 int new_input_notification = 0;
+int INTERRUPTION = 0;
 char user_input[USER_INPUT_MAX_SIZE + 1];
 char sync_dir_path[9 + USERNAME_MAX_SIZE + 1];
 char username[USERNAME_MAX_SIZE + 1];
-pthread_mutex_t upload_lock, user_input_listener_lock, delete_lock;
+pthread_mutex_t upload_lock, user_input_listener_lock, delete_lock, sync_propagation_lock, inotify_event_lock;
+int sockfd, server_sync_sockfd;
+struct sockaddr_in serv_addr, serv_sync_addr;
+struct hostent *server;
+int server_port;
 
+
+void INT_handler(int sig)
+{
+    INTERRUPTION = 1;
+}
 
 void* user_input_handler(void* args)
 {
@@ -55,6 +62,7 @@ void* server_sync_handler(void* args)
     while(1)
     {
         receive_msg(server_sync_sockfd, buffer); // Get synchronization type
+        pthread_mutex_lock(&sync_propagation_lock);
         printf("Synch type: %s\n", buffer);
 
         if(strcmp(buffer, "Upload") == 0)
@@ -97,6 +105,8 @@ void* server_sync_handler(void* args)
 
             remove(file_path);
         }
+
+        pthread_mutex_unlock(&sync_propagation_lock);
     }
 }
 
@@ -105,7 +115,7 @@ void handle_list_client()
     DIR *dp;
     struct dirent *ep;   
     dp = opendir (sync_dir_path);
-    struct stat st;// = {0};
+    struct stat st;
     char file_path[FILE_PATH_MAX_SIZE + 1];
 
 
@@ -122,21 +132,17 @@ void handle_list_client()
         }
         else
         {
-            //st = (struct stat*) malloc(sizeof(struct stat));
             strcpy(file_path, sync_dir_path);
             strcat(file_path, "/");
             strcat(file_path, ep->d_name);
             printf("File path: %s\n", file_path);
+
             stat(file_path, &st);
             printf("%s\n", ep->d_name);
-
-            //printf("atime = %d\nmtime = %d\nctime = %d\n", atime, mtime, ctime);
-
             printf("File access time %s", ctime(&st.st_atime));
             printf("File modify time %s", ctime(&st.st_mtime));
             printf("File changed time %s", ctime(&st.st_ctime));
             printf("\n");
-            //free(st);
         }
 }
 
@@ -308,40 +314,40 @@ void handle_delete(int sockfd, char buffer[MESSAGE_SIZE + 1])
         printf("Could not delete %s\n", file_name);
 }
 
-int sockets_setup(int* sockfd, int* server_sync_sockfd, struct sockaddr_in* serv_addr, struct sockaddr_in* serv_sync_addr, struct hostent* server)
+int sockets_setup()
 {
     // Create sockets
-    if ((*sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
     {
         fprintf(stderr, "ERROR opening socket\n");
         return 1;
     }
 
-    if ((*server_sync_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    if ((server_sync_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
     {
         fprintf(stderr, "ERROR opening server sync socket\n");
         return 1;
     }
         
     // Bind sockets
-    serv_addr->sin_family = AF_INET;  
-    serv_addr->sin_port = htons(PORT);
-    serv_addr->sin_addr = *((struct in_addr *)server->h_addr_list[0]);
-    bzero(&(serv_addr->sin_zero), 8);
+    serv_addr.sin_family = AF_INET;  
+    serv_addr.sin_port = htons(server_port);
+    serv_addr.sin_addr = *((struct in_addr *)server->h_addr_list[0]);
+    bzero(&(serv_addr.sin_zero), 8);
 
-    serv_sync_addr->sin_family = AF_INET;     
-    serv_sync_addr->sin_port = htons(SERVER_SYNC_PORT);    
-    serv_sync_addr->sin_addr = *((struct in_addr *)server->h_addr_list[0]);
-    bzero(&(serv_sync_addr->sin_zero), 8);   
+    serv_sync_addr.sin_family = AF_INET;     
+    serv_sync_addr.sin_port = htons(server_port + 1);    
+    serv_sync_addr.sin_addr = *((struct in_addr *)server->h_addr_list[0]);
+    bzero(&(serv_sync_addr.sin_zero), 8);
         
     // Connect sockets
-    if (connect(*sockfd, (struct sockaddr *) serv_addr, sizeof(*serv_addr)) < 0)
+    if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
     {
         fprintf(stderr, "ERROR connecting\n");
         return 1;
     }
 
-    if (connect(*server_sync_sockfd, (struct sockaddr *) serv_sync_addr, sizeof(*serv_sync_addr)) < 0)
+    if (connect(server_sync_sockfd, (struct sockaddr *) &serv_sync_addr, sizeof(serv_sync_addr)) < 0)
     {
         fprintf(stderr, "ERROR connecting on server sync\n");
         return 1;
@@ -350,7 +356,7 @@ int sockets_setup(int* sockfd, int* server_sync_sockfd, struct sockaddr_in* serv
     return 0;
 }
 
-int establish_connection(int sockfd, int server_sync_sockfd, char* argv)
+int establish_connection(char* argv)
 {
     char buffer[MESSAGE_SIZE + 1];
 
@@ -375,22 +381,70 @@ int establish_connection(int sockfd, int server_sync_sockfd, char* argv)
     return 0;
 }
 
+int name_server_socket_setup(int* name_server_sockfd, struct sockaddr_in* name_server_addr, struct hostent *name_server)
+{
+    // Create socket
+    if ((*name_server_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    {
+        fprintf(stderr, "ERROR opening name server socket\n");
+        return 1;
+    }
+
+    // Bind socket
+    name_server_addr->sin_family = AF_INET;     
+    name_server_addr->sin_port = htons(NAME_SERVER_PORT);    
+    name_server_addr->sin_addr = *((struct in_addr *)name_server->h_addr_list[0]);
+    bzero(&(name_server_addr->sin_zero), 8);
+
+    // Connect sockets
+    if (connect(*name_server_sockfd, (struct sockaddr *) name_server_addr, sizeof(*name_server_addr)) < 0)
+    {
+        fprintf(stderr, "ERROR connecting to name server\n");
+        return 1;
+    }
+
+    return 0;
+}
+
+void* frontend(void *args)
+{
+    int name_server_sockfd = *(int*) args;
+
+    return 0;
+}
+
+void get_server_address(int name_server_sockfd)
+{
+    char buffer[MESSAGE_SIZE];
+
+    // Get server address
+    receive_msg(name_server_sockfd, buffer);
+    printf("Server address: %s\n", buffer);
+    server = gethostbyname(buffer);
+
+    // Get server port
+    receive_msg(name_server_sockfd, buffer);
+    server_port = atoi(buffer);
+    printf("Server port: %d\n", server_port);
+}
+
 int main(int argc, char *argv[])
 {
-    int sockfd, server_sync_sockfd;
-    struct sockaddr_in serv_addr, serv_sync_addr;
-    struct hostent *server;
+    int name_server_sockfd;
+    struct sockaddr_in name_server_addr;
+    struct hostent *name_server;
     char buffer[MESSAGE_SIZE + 1];
     struct sync_dir_listener_struct my_sync_dir_listener_struct;
-
-    pthread_t user_input_listener_thread, sync_thread, sync_dir_listener_thread;
+    pthread_t user_input_listener_thread, sync_thread, sync_dir_listener_thread, frontend_thread;
     struct stat st = {0};
 
+    // Set handler for user interruption
+    signal(SIGINT, INT_handler);
 
     // If arguments are wrong, end client
     if(argc != 3)
     {
-        fprintf(stderr,"usage %s username hostname\n", argv[0]);
+        fprintf(stderr,"usage %s username hostname (name server)\n", argv[0]);
         return 1;
     }
 
@@ -401,20 +455,29 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // If server doesnt exist, end client    
-    server = gethostbyname(argv[2]);
-    if(server == NULL)
+    // If name server doesnt exist, end client    
+    name_server = gethostbyname(argv[2]);
+    if(name_server == NULL)
     {
         fprintf(stderr, "ERROR, no such host\n");
         return 1;
     }
 
-    // If sockets setup fails, end client
-    if(sockets_setup(&sockfd, &server_sync_sockfd, &serv_addr, &serv_sync_addr, server))
+    // If name server socket setup fails, end client
+    if(name_server_socket_setup(&name_server_sockfd, &name_server_addr, name_server))
         return 1;
 
+    // Get coordinator server from name server
+    get_server_address(name_server_sockfd);
+
+    // If sockets setup fails, end client
+    if(sockets_setup())
+        return 1;
+
+    pthread_create(&frontend_thread, NULL, frontend, &name_server_sockfd);
+
     // If connection fails, end client
-    if(establish_connection(sockfd, server_sync_sockfd, argv[1]))
+    if(establish_connection(argv[1]))
         return 1;
 
     // Get sync dir
@@ -436,6 +499,18 @@ int main(int argc, char *argv[])
     // User input handler
     while(1)
     {
+        // Handle user interruption
+        pthread_mutex_lock(&upload_lock);
+        pthread_mutex_lock(&delete_lock);
+        pthread_mutex_lock(&sync_propagation_lock);
+        pthread_mutex_lock(&inotify_event_lock);
+        if(INTERRUPTION)
+            break;
+        pthread_mutex_unlock(&inotify_event_lock);
+        pthread_mutex_unlock(&sync_propagation_lock);
+        pthread_mutex_unlock(&delete_lock);
+        pthread_mutex_unlock(&upload_lock);
+
         strcpy(buffer, "Waiting for user input");
 
         // Checks for new user input

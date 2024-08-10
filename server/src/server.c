@@ -2,12 +2,13 @@
 #include "../../shared/include/definitions.h"
 #include "../include/user.h"
 #include "../include/thread_list.h"
-#include <dirent.h>
 
 
 UserList* user_list;
 THREAD_LIST* thread_list;
 pthread_mutex_t lock;
+int is_coordinator = 0;
+
 
 struct sync_struct
 {
@@ -370,16 +371,8 @@ void *user_thread(void *arg) {
 	}
 }
 
-int sockets_setup(int* sockfd, int* server_sync_sockfd, int* name_server_sockfd, struct sockaddr_in* serv_addr, struct sockaddr_in* serv_sync_addr, struct sockaddr_in* name_server_addr, socklen_t *clilen, struct hostent *name_server, char* argv)
-{
-    // If server doesnt exist, end client    
-    name_server = gethostbyname(argv);
-    if(name_server == NULL)
-    {
-        fprintf(stderr, "ERROR, no such host\n");
-        exit(1);
-    }
-    
+int sockets_setup(int* sockfd, int* server_sync_sockfd, struct sockaddr_in* serv_addr, struct sockaddr_in* serv_sync_addr, socklen_t *clilen, char* argv, int port)
+{    
     // Create sockets
     *sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (*sockfd == -1)
@@ -393,30 +386,20 @@ int sockets_setup(int* sockfd, int* server_sync_sockfd, int* name_server_sockfd,
 	{
         printf("ERROR opening server sync socket\n");
 		exit(1);
-	}
+	} 
 
-    *name_server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (*name_server_sockfd == -1)
-	{
-        printf("ERROR opening name server socket\n");
-		exit(1);
-	}    
-
-	// Bind sockets
+	// Bind sockets    
 	serv_addr->sin_family = AF_INET;
-	serv_addr->sin_port = htons(PORT);
+	//serv_addr->sin_port = htons(PORT);
+    serv_addr->sin_port = htons(port);
 	serv_addr->sin_addr.s_addr = INADDR_ANY;
 	bzero(&(serv_addr->sin_zero), 8);
 
     serv_sync_addr->sin_family = AF_INET;
-	serv_sync_addr->sin_port = htons(SERVER_SYNC_PORT);
+	//serv_sync_addr->sin_port = htons(SERVER_SYNC_PORT);
+    serv_sync_addr->sin_port = htons(port + 1);
 	serv_sync_addr->sin_addr.s_addr = INADDR_ANY;
 	bzero(&(serv_sync_addr->sin_zero), 8);
-
-    name_server_addr->sin_family = AF_INET;  
-    name_server_addr->sin_port = htons(NAME_SERVER_PORT);
-    name_server_addr->sin_addr = *((struct in_addr *)name_server->h_addr_list[0]);
-    bzero(&(name_server_addr->sin_zero), 8);
   
 	if (bind(*sockfd, (struct sockaddr *) serv_addr, sizeof(*serv_addr)) < 0)
 	{
@@ -435,19 +418,37 @@ int sockets_setup(int* sockfd, int* server_sync_sockfd, int* name_server_sockfd,
 	listen(*sockfd, 5);
     listen(*server_sync_sockfd, 5);
 
-	*clilen = sizeof(struct sockaddr_in);
-    
+	*clilen = sizeof(struct sockaddr_in);    
+
+    return 0;
+}
+
+int name_server_socket_setup(int* name_server_sockfd, struct sockaddr_in* name_server_addr, struct hostent* name_server)
+{
+    // Create socket
+    *name_server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if (*name_server_sockfd == -1)
+	{
+        printf("ERROR opening socket\n");
+		return 1;
+	}
+
+    // Bind socket
+    name_server_addr->sin_family = AF_INET;  
+    name_server_addr->sin_port = htons(NAME_SERVER_PORT);
+    name_server_addr->sin_addr = *((struct in_addr *)name_server->h_addr_list[0]);
+    bzero(&(name_server_addr->sin_zero), 8);
+
     // Connect to name server
     if (connect(*name_server_sockfd, (struct sockaddr *) name_server_addr, sizeof(*name_server_addr)) < 0)
     {
         fprintf(stderr, "ERROR connecting to name server\n");
-        exit(1);
+        return 1;
     }
 
-/*
-*/
     return 0;
 }
+
 
 int main(int argc, char *argv[])
 {
@@ -458,6 +459,9 @@ int main(int argc, char *argv[])
 	User* user;
 	SOCKETS new_sockets;
     struct hostent *name_server = NULL;
+    int server_id;
+    int server_port;
+    char buffer[MESSAGE_SIZE];
 
 
     // If arguments are wrong, end server
@@ -467,46 +471,75 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // Setup sockets
-    sockets_setup(&sockfd, &server_sync_sockfd, &name_server_sockfd,
-          &serv_addr, &serv_sync_addr, &name_server_addr,
-        &clilen, name_server, argv[1]);
+    // If setup name server socket fails, end server
+    if(name_server_socket_setup(&name_server_sockfd, &name_server_addr, name_server))
+        return 1;
 
     // Init global variables
 	user_list = init();
 	thread_list = create_thread_list();
 
+    // Get server id from name server
+    receive_msg(name_server_sockfd, buffer);
+    server_id = atoi(buffer);
+    printf("Server id: %d\n", server_id);
+
+    if(server_id == INT_MAX)
+        is_coordinator = 1;
+
+    // Get server port from name server
+    receive_msg(name_server_sockfd, buffer);
+    server_port = atoi(buffer);
+    printf("Server port: %d\n", server_port);
+
+    // Send hostname to name server
+    gethostname(buffer, MESSAGE_SIZE);
+    send_msg(name_server_sockfd, buffer);
+
+    // Setup sockets
+    sockets_setup(&sockfd, &server_sync_sockfd, &serv_addr, &serv_sync_addr, &clilen, argv[1], server_port);
+
 	// Server waits for next connection
 	while(1)
 	{
-		user = (User*) malloc(sizeof(User));
-		first_socket_ok = 1;
-		second_socket_ok = 1;
+		// If server is not coordinator, receive backup data
+        if(!is_coordinator)
+        {
+            // Do something
+            sleep(10);
+        }
+        // Server is coordinator
+        else
+        {
+            user = (User*) malloc(sizeof(User));
+            first_socket_ok = 1;
+            second_socket_ok = 1;
 
-		if ((new_sockets.sockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen)) == -1) {
-			printf("ERROR on accepting socket\n");
-			first_socket_ok = 0;
-		}
+            if ((new_sockets.sockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen)) == -1) {
+                printf("ERROR on accepting socket\n");
+                first_socket_ok = 0;
+            }
 
-		if ((new_sockets.server_sync_sockfd = accept(server_sync_sockfd, (struct sockaddr *) &cli_addr, &clilen)) == -1) {
-			printf("ERROR on accepting server sync socket\n");
-			second_socket_ok = 0;
-		}
+            if ((new_sockets.server_sync_sockfd = accept(server_sync_sockfd, (struct sockaddr *) &cli_addr, &clilen)) == -1) {
+                printf("ERROR on accepting server sync socket\n");
+                second_socket_ok = 0;
+            }
 
-		// if both sockets were accepted, create the user thread
-		if(first_socket_ok && second_socket_ok)
-		{
-			user->sockets[0] = new_sockets.sockfd;
-			user->sockets[1] = new_sockets.server_sync_sockfd;
-			user->sync_needed = 0;
-	
-			current_thread = get_last_thread(thread_list);
-			thread_list = add_to_thread_list(thread_list);
+            // if both sockets were accepted, create the user thread
+            if(first_socket_ok && second_socket_ok)
+            {
+                user->sockets[0] = new_sockets.sockfd;
+                user->sockets[1] = new_sockets.server_sync_sockfd;
+                user->sync_needed = 0;
+        
+                current_thread = get_last_thread(thread_list);
+                thread_list = add_to_thread_list(thread_list);
 
-			pthread_create(&current_thread, NULL, user_thread, &new_sockets);
-		}
-		else
-			free(user);
+                pthread_create(&current_thread, NULL, user_thread, &new_sockets);
+            }
+            else
+                free(user);
+        }
 	}
 
 	close(sockfd);

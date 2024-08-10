@@ -41,7 +41,7 @@ UserList *remove_user(UserList *list, char* username)
 
 	// delete first user
 	if( strcmp(list->user.username, username) == 0 )
-		return NULL;
+		return list->next;
 
 
 	while(aux->next)

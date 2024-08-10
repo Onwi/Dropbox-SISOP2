@@ -8,6 +8,7 @@ extern void handle_upload(int sockfd, char buffer[MESSAGE_SIZE + 1]);
 extern void handle_delete(int sockfd, char buffer[MESSAGE_SIZE + 1]);
 extern pthread_mutex_t upload_lock;
 extern pthread_mutex_t delete_lock;
+extern pthread_mutex_t inotify_event_lock;
 
 
 void *listen_inotify(void *args)
@@ -53,6 +54,9 @@ void *listen_inotify(void *args)
         {
             pthread_exit(&error);
         }
+
+        pthread_mutex_lock(&inotify_event_lock);
+
 
         printf("An event has been read\n");
         printf("Read size: %ld\n", r);
@@ -102,5 +106,7 @@ void *listen_inotify(void *args)
                 pthread_mutex_unlock(&upload_lock);
             }
         }
+
+        pthread_mutex_unlock(&inotify_event_lock);
     }
 }
