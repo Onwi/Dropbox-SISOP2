@@ -1,9 +1,4 @@
-#include "../../shared/include/communication.h"
-#include "../../shared/include/definitions.h"
-#include "../include/user.h"
-#include "../include/thread_list.h"
-#include <netdb.h>
-#include <string.h>
+#include "../include/server.h"
 
 
 UserList* user_list;
@@ -12,18 +7,18 @@ pthread_mutex_t lock;
 int is_coordinator = 0;
 
 
-struct sync_struct
-{
-	int socket;
-	char username[USERNAME_MAX_SIZE + 1];
-};
+// struct sync_struct
+// {
+// 	int socket;
+// 	char username[USERNAME_MAX_SIZE + 1];
+// };
 
-typedef struct sockets
-{
-	int sockfd;
-	int server_sync_sockfd;
-    int name_server_sockfd;
-} SOCKETS;
+// typedef struct sockets
+// {
+// 	int sockfd;
+// 	int server_sync_sockfd;
+//     int name_server_sockfd;
+// } SOCKETS;
 
 void handle_download(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username[USERNAME_MAX_SIZE + 1])
 {
