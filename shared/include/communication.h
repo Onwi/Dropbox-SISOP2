@@ -17,8 +17,10 @@
 #define MESSAGE_SIZE 256
 #define bzero(ptr, size) memset(ptr, 0, size)
 
+// Aux functions
 void reverse(char s[]);
 void itoa(int n, char s[]);
+// Communition functions
 int send_msg(int sockfd, char buffer[MESSAGE_SIZE + 1]);
 int receive_msg(int sockfd, char buffer[MESSAGE_SIZE + 1]);
 int send_file(int sockfd, FILE* fp, unsigned int file_size);

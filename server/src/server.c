@@ -482,25 +482,19 @@ int main(int argc, char *argv[])
 	socklen_t clilen;
 	struct sockaddr_in serv_addr, cli_addr, serv_sync_addr, name_server_addr;
 	pthread_t current_thread;
-	User* user;
 	SOCKETS new_sockets;
+	User* user;
     struct hostent *name_server = NULL;
     char buffer[MESSAGE_SIZE + 1], username[USERNAME_MAX_SIZE + 1], file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
-    FILE* fp;
+    FILE* fp = NULL;
 
 
     // If arguments are wrong, end server
-    if(argc != 2)
-    {
-        fprintf(stderr, "usage %s name_server\n", argv[0]);
-        return 1;
-    }
-
+    if(argc != 2) {fprintf(stderr, "usage %s name_server\n", argv[0]);return 1;}
     // If setup name server socket fails, end server
-    if(name_server_socket_setup(&name_server_sockfd, &name_server_addr, name_server, argv[1]))
-        return 1;
-
-    // Init global variables
+    if(name_server_socket_setup(&name_server_sockfd, &name_server_addr, name_server, argv[1])) {return 1;}
+    
+	// Init global variables
 	user_list = init();
 	thread_list = create_thread_list();
 
