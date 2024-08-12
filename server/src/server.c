@@ -2,6 +2,8 @@
 #include "../../shared/include/definitions.h"
 #include "../include/user.h"
 #include "../include/thread_list.h"
+#include <netdb.h>
+#include <string.h>
 
 
 UserList* user_list;
@@ -20,6 +22,7 @@ typedef struct sockets
 {
 	int sockfd;
 	int server_sync_sockfd;
+    int name_server_sockfd;
 } SOCKETS;
 
 void handle_download(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username[USERNAME_MAX_SIZE + 1])
@@ -190,7 +193,7 @@ void handle_delete(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username[U
         printf("Could not delete %s\n", file_name);
 }
 
-void handle_upload(int newsockfd, User user, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1])
+void handle_upload(int newsockfd, int name_server_sockfd, User user, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1])
 {
 	char buffer[MESSAGE_SIZE + 1], file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
 	unsigned int file_size;
@@ -198,6 +201,14 @@ void handle_upload(int newsockfd, User user, char sync_dir_path[9 + USERNAME_MAX
     int i;
 
 	printf("Inside: %d\n", user.sessions_amount);
+
+    // Send upload replication request
+    strcpy(buffer, "Upload");
+    send_msg(name_server_sockfd, buffer);
+
+    // Send username for replication
+    strcpy(buffer, user.username);
+    send_msg(name_server_sockfd, buffer);
 	
 	// Get file name
 	receive_msg(newsockfd, buffer);
@@ -210,10 +221,14 @@ void handle_upload(int newsockfd, User user, char sync_dir_path[9 + USERNAME_MAX
 	strcat(file_path, file_name);
 	printf("File path: %s\n", file_path);
 
+    strcpy(buffer, file_name);
+    send_msg(name_server_sockfd, buffer); // Send file name for replication
+
 	fp = fopen(file_path, "wb");
 
 	// Get file size
 	receive_msg(newsockfd, buffer);
+    send_msg(name_server_sockfd, buffer); // Send file size for replication 
 	file_size = atoi(buffer);
 	printf("%d\n", file_size);
 
@@ -223,6 +238,8 @@ void handle_upload(int newsockfd, User user, char sync_dir_path[9 + USERNAME_MAX
     // Open file on "rb" mode
     fclose(fp);
     fp = fopen(file_path, "rb");
+    send_file(name_server_sockfd, fp, file_size); // Send file data for replication
+    rewind(fp);
 
     // Upload propagation
     for(i = 0; i < user.sessions_amount; i++)
@@ -330,7 +347,7 @@ void *user_thread(void *arg) {
 
 			pthread_mutex_lock(&lock);
 			th_user = get_user(user_list, th_user.username);
-			handle_upload(newsockfd, th_user, sync_dir_path);
+			handle_upload(newsockfd, new_sockets.name_server_sockfd, th_user, sync_dir_path);
 			pthread_mutex_unlock(&lock);
 		}
 		else if(strstr(th_buffer, "download")) // Handle download
@@ -423,8 +440,16 @@ int sockets_setup(int* sockfd, int* server_sync_sockfd, struct sockaddr_in* serv
     return 0;
 }
 
-int name_server_socket_setup(int* name_server_sockfd, struct sockaddr_in* name_server_addr, struct hostent* name_server)
+int name_server_socket_setup(int* name_server_sockfd, struct sockaddr_in* name_server_addr, struct hostent* name_server, char* hostname)
 {
+    // Set name server address
+    name_server = gethostbyname(hostname);
+    if(name_server == NULL)
+    {
+        fprintf(stderr, "ERROR, no such host\n");
+        return 1;
+    }
+
     // Create socket
     *name_server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (*name_server_sockfd == -1)
@@ -449,19 +474,24 @@ int name_server_socket_setup(int* name_server_sockfd, struct sockaddr_in* name_s
     return 0;
 }
 
+void get_sync_dir_replication(int name_server_sockfd, char file_path[FILE_PATH_MAX_SIZE + 1])
+{
+    return;
+}
+
 
 int main(int argc, char *argv[])
 {
-	int sockfd, server_sync_sockfd, name_server_sockfd, first_socket_ok, second_socket_ok;
+	int sockfd, server_sync_sockfd, name_server_sockfd, first_socket_ok, second_socket_ok, server_port, server_id;
+    unsigned int file_size;
 	socklen_t clilen;
 	struct sockaddr_in serv_addr, cli_addr, serv_sync_addr, name_server_addr;
 	pthread_t current_thread;
 	User* user;
 	SOCKETS new_sockets;
     struct hostent *name_server = NULL;
-    int server_id;
-    int server_port;
-    char buffer[MESSAGE_SIZE];
+    char buffer[MESSAGE_SIZE + 1], username[USERNAME_MAX_SIZE + 1], file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
+    FILE* fp;
 
 
     // If arguments are wrong, end server
@@ -472,7 +502,7 @@ int main(int argc, char *argv[])
     }
 
     // If setup name server socket fails, end server
-    if(name_server_socket_setup(&name_server_sockfd, &name_server_addr, name_server))
+    if(name_server_socket_setup(&name_server_sockfd, &name_server_addr, name_server, argv[1]))
         return 1;
 
     // Init global variables
@@ -505,8 +535,39 @@ int main(int argc, char *argv[])
 		// If server is not coordinator, receive backup data
         if(!is_coordinator)
         {
-            // Do something
-            sleep(10);
+            // Get replication request
+            receive_msg(name_server_sockfd, buffer);
+
+            if(strstr(buffer, "Sync dir"))
+            {
+                // Get username for replication
+                receive_msg(name_server_sockfd, buffer);
+                strcpy(username, buffer);
+
+                strcpy(file_path, "sync_dir_");
+                strcat(file_path, username);
+                strcat(file_path, "/");
+
+                get_sync_dir_replication(name_server_sockfd, file_path);
+            }
+
+            else if(strstr(buffer, "Upload"))
+            {
+                // Get username for replication
+                receive_msg(name_server_sockfd, buffer);
+                strcpy(username, buffer);
+                
+                // Get file name for replication
+                receive_msg(name_server_sockfd, buffer);
+                strcpy(file_name, buffer);
+
+                // Get file size for replication
+                receive_msg(name_server_sockfd, buffer);
+                file_size = atoi(buffer);
+
+                // Get file data for replication
+                receive_file(name_server_sockfd, fp, file_size);
+            }
         }
         // Server is coordinator
         else
@@ -530,7 +591,7 @@ int main(int argc, char *argv[])
             {
                 user->sockets[0] = new_sockets.sockfd;
                 user->sockets[1] = new_sockets.server_sync_sockfd;
-                user->sync_needed = 0;
+                new_sockets.name_server_sockfd = name_server_sockfd;
         
                 current_thread = get_last_thread(thread_list);
                 thread_list = add_to_thread_list(thread_list);

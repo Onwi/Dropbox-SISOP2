@@ -187,7 +187,6 @@ void get_sync_dir(int sockfd)
     receive_msg(sockfd, buffer);
     number_of_files = atoi(buffer);
 
-
     // Get all files
     for(i = 0; i < number_of_files; i++)
     {
@@ -392,7 +391,7 @@ int name_server_socket_setup(int* name_server_sockfd, struct sockaddr_in* name_s
 
     // Bind socket
     name_server_addr->sin_family = AF_INET;     
-    name_server_addr->sin_port = htons(NAME_SERVER_PORT);    
+    name_server_addr->sin_port = htons(FRONTEND_NAME_SERVER_PORT);    
     name_server_addr->sin_addr = *((struct in_addr *)name_server->h_addr_list[0]);
     bzero(&(name_server_addr->sin_zero), 8);
 
@@ -408,21 +407,28 @@ int name_server_socket_setup(int* name_server_sockfd, struct sockaddr_in* name_s
 
 void* frontend(void *args)
 {
-    int name_server_sockfd = *(int*) args;
+    //int name_server_sockfd = *(int*) args;
+    int val;
 
-    return 0;
+    while(1)
+    {
+
+    }
+
+    val = 0;
+    pthread_exit(&val);
 }
 
 void get_server_address(int name_server_sockfd)
 {
     char buffer[MESSAGE_SIZE];
 
-    // Get server address
+    // Get coordinator hostname
     receive_msg(name_server_sockfd, buffer);
     printf("Server address: %s\n", buffer);
     server = gethostbyname(buffer);
 
-    // Get server port
+    // Get coordinator server port
     receive_msg(name_server_sockfd, buffer);
     server_port = atoi(buffer);
     printf("Server port: %d\n", server_port);
@@ -474,6 +480,7 @@ int main(int argc, char *argv[])
     if(sockets_setup())
         return 1;
 
+    // Create frontend thread
     pthread_create(&frontend_thread, NULL, frontend, &name_server_sockfd);
 
     // If connection fails, end client
