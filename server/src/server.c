@@ -77,17 +77,10 @@ void get_sync_dir(int newsockfd, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1])
 
 	
 	// If user directory doesnt exist, create one
-	if (stat(sync_dir_path, &st) == -1)
-		mkdir(sync_dir_path, 0700);
+	if (stat(sync_dir_path, &st) == -1){mkdir(sync_dir_path, 0700); printf("Creating directory: %s\n", sync_dir_path);}
 
-	  
 	dp = opendir(sync_dir_path);
-
-	if(!dp)
-	{
-		perror ("Couldn't open the directory");
-		return;
-	}
+	if(!dp){perror ("Couldn't open the directory");return;}
 
 	// Counts the number of files
 	number_of_files = 0;
@@ -149,6 +142,8 @@ void delete_propagation(char username[USERNAME_MAX_SIZE + 1], char file_path[FIL
     int i;
     char buffer[MESSAGE_SIZE + 1];
 
+
+	/*__MUTEX__*/
 	pthread_mutex_lock(&lock);
 	user = get_user(user_list, username);
 	pthread_mutex_unlock(&lock);
@@ -184,8 +179,7 @@ void handle_delete(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username[U
         printf("File %s deleted\n", file_name);
 		delete_propagation(username, file_path);
 	}
-    else
-        printf("Could not delete %s\n", file_name);
+    else {printf("Could not delete %s\n", file_name);}
 }
 
 void handle_upload(int newsockfd, int name_server_sockfd, User user, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1])
@@ -272,7 +266,7 @@ void *user_thread(void *arg) {
 
 
     new_sockets = *(SOCKETS*) arg;
-	newsockfd = new_sockets.sockfd;
+	newsockfd	= new_sockets.sockfd;
 	new_server_sync_sockfd = new_sockets.server_sync_sockfd;
 	
 	// Read user name

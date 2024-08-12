@@ -3,7 +3,7 @@
 
 
 
-
+/*========================================================================================================*/
 THREAD_LIST* create_thread_list(void)
 {
     THREAD_LIST* new_list = (THREAD_LIST*) malloc(sizeof(THREAD_LIST));
@@ -13,6 +13,7 @@ THREAD_LIST* create_thread_list(void)
     return new_list;
 }
 
+/*========================================================================================================*/
 THREAD_LIST* add_to_thread_list(THREAD_LIST* list)
 {
     THREAD_LIST* aux;
@@ -30,6 +31,7 @@ THREAD_LIST* add_to_thread_list(THREAD_LIST* list)
     return list;
 }
 
+/*========================================================================================================*/
 pthread_t get_last_thread(THREAD_LIST* list)
 {
     THREAD_LIST* aux;
