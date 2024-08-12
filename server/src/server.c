@@ -526,8 +526,8 @@ int main(int argc, char *argv[])
         else
         {
             user = (User*) malloc(sizeof(User));
-            first_socket_ok = 1;
-            second_socket_ok = 1;
+            first_socket_ok 	= 1;
+            second_socket_ok= 1;
 
             if ((new_sockets.sockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen)) == -1) {
                 printf("ERROR on accepting socket\n");
@@ -535,7 +535,7 @@ int main(int argc, char *argv[])
             }
 
             if ((new_sockets.server_sync_sockfd = accept(server_sync_sockfd, (struct sockaddr *) &cli_addr, &clilen)) == -1) {
-                printf("ERROR on accepting server sync socket\n");
+				printf("ERROR on accepting server sync socket\n");
                 second_socket_ok = 0;
             }
 
@@ -546,13 +546,12 @@ int main(int argc, char *argv[])
                 user->sockets[1] = new_sockets.server_sync_sockfd;
                 new_sockets.name_server_sockfd = name_server_sockfd;
         
-                current_thread = get_last_thread(thread_list);
-                thread_list = add_to_thread_list(thread_list);
+                current_thread	= get_last_thread(thread_list);
+                thread_list	 	= add_to_thread_list(thread_list);
 
                 pthread_create(&current_thread, NULL, user_thread, &new_sockets);
             }
-            else
-                free(user);
+            else {free(user);}
         }
 	}
 

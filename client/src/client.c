@@ -421,7 +421,7 @@ void* frontend(void *args)
 
 void get_server_address(int name_server_sockfd)
 {
-    char buffer[MESSAGE_SIZE];
+    char buffer[MESSAGE_SIZE + 1];
 
     // Get coordinator hostname
     receive_msg(name_server_sockfd, buffer);
@@ -455,37 +455,22 @@ int main(int argc, char *argv[])
     }
 
     // If username exceeds USERNAME_MAX_SIZE, end client
-    if(strlen(argv[1]) > USERNAME_MAX_SIZE)
-    {
-        fprintf(stderr, "Max username size permitted: %d\n", USERNAME_MAX_SIZE);
-        return 1;
-    }
+    if(strlen(argv[1]) > USERNAME_MAX_SIZE){fprintf(stderr, "Max username size permitted: %d\n", USERNAME_MAX_SIZE);return 1;}
 
     // If name server doesnt exist, end client    
     name_server = gethostbyname(argv[2]);
-    if(name_server == NULL)
-    {
-        fprintf(stderr, "ERROR, no such host\n");
-        return 1;
-    }
-
-    // If name server socket setup fails, end client
-    if(name_server_socket_setup(&name_server_sockfd, &name_server_addr, name_server))
-        return 1;
+    if(name_server == NULL){fprintf(stderr, "ERROR, no such host\n");return 1;}
+    if(name_server_socket_setup(&name_server_sockfd, &name_server_addr, name_server)) {return 1;}
 
     // Get coordinator server from name server
     get_server_address(name_server_sockfd);
-
-    // If sockets setup fails, end client
-    if(sockets_setup())
-        return 1;
+    if(sockets_setup()){return 1;}
 
     // Create frontend thread
     pthread_create(&frontend_thread, NULL, frontend, &name_server_sockfd);
 
     // If connection fails, end client
-    if(establish_connection(argv[1]))
-        return 1;
+    if(establish_connection(argv[1])) {return 1;}
 
     // Get sync dir
     strcpy(sync_dir_path, "sync_dir_");

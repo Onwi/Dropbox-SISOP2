@@ -21,6 +21,7 @@ SERVER_LIST_NODE* server_list_init();
 SERVER_LIST_NODE* server_list_insert(SERVER_LIST_NODE* server_list, SERVER server); // end of list
 SERVER_LIST_NODE* server_list_remove(SERVER_LIST_NODE* server_list, int id);
 SERVER server_list_get_server(SERVER_LIST_NODE* server_list, int id);
+
 void server_list_print(SERVER_LIST_NODE* server_list);
 void server_list_make_it_coordinator(SERVER_LIST_NODE* server_list, int id);
 void server_list_make_it_backup(SERVER_LIST_NODE* server_list, int id);

@@ -2,7 +2,7 @@
 #include "../../shared/include/definitions.h"
 #include "../../shared/include/communication.h"
 
-#define EVENT_SIZE (100 * (sizeof(struct inotify_event) + FILE_NAME_MAX_SIZE + 1))
+#define EVENT_SIZE (100 * (sizeof(struct inotify_event) + FILE_NAME_MAX_SIZE))
 
 extern void handle_upload(int sockfd, char buffer[MESSAGE_SIZE + 1]);
 extern void handle_delete(int sockfd, char buffer[MESSAGE_SIZE + 1]);
@@ -13,7 +13,7 @@ extern pthread_mutex_t inotify_event_lock;
 
 void *listen_inotify(void *args)
 {
-    char dir_path[FILE_PATH_MAX_SIZE + 1];
+    char dir_path[FILE_PATH_MAX_SIZE];
     struct inotify_event *pevent;
     char event_buffer[EVENT_SIZE];
     char *p;
@@ -21,7 +21,7 @@ void *listen_inotify(void *args)
     struct sync_dir_listener_struct my_sync_dir_listener_struct;
     int sockfd;
     char buffer[MESSAGE_SIZE + 1];
-    char file_path[FILE_PATH_MAX_SIZE + 1];
+    char file_path[FILE_PATH_MAX_SIZE];
     ssize_t r;
 
 
@@ -30,19 +30,10 @@ void *listen_inotify(void *args)
     strcpy(dir_path, my_sync_dir_listener_struct.dir_path);
 
     int fd = inotify_init();
-    if (fd < 0)
-    {
-        perror("inotify_init"); /* errno é setado */
-        pthread_exit(&error);
-    }
+    if (fd < 0){perror("inotify_init"); pthread_exit(&error);}
 
     int wd = inotify_add_watch(fd, dir_path, IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO/*| IN_MODIFY | IN_MOVE*/);
-
-    if (wd < 0)
-    {
-        perror("inotify_add_watch");
-        pthread_exit(&error);
-    }
+    if (wd < 0){perror("inotify_add_watch");pthread_exit(&error);}
 
     while (1)
     {
@@ -50,10 +41,7 @@ void *listen_inotify(void *args)
         bzero(event_buffer, EVENT_SIZE);
         r = read(fd, event_buffer, EVENT_SIZE);
 
-        if (r <= 0)
-        {
-            pthread_exit(&error);
-        }
+        if (r <= 0){pthread_exit(&error);}
 
         pthread_mutex_lock(&inotify_event_lock);
 

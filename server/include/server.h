@@ -6,10 +6,10 @@
 #include <string.h>
 
 
-UserList* user_list;
-THREAD_LIST* thread_list;
-pthread_mutex_t lock;
-int is_coordinator = 0;
+// UserList* user_list;
+// THREAD_LIST* thread_list;
+// pthread_mutex_t lock;
+// int is_coordinator = 0;
 
 
 /*===============================================================================================================================*/
