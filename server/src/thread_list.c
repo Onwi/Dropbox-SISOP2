@@ -36,8 +36,7 @@ pthread_t get_last_thread(THREAD_LIST* list)
 {
     THREAD_LIST* aux;
     
-    if (!list)
-        return -1;
+    if (!list){return -1;}
 
     for(aux = list; aux->next; aux = aux->next);
 

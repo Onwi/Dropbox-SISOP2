@@ -68,12 +68,7 @@ int receive_msg(int sockfd, char buffer[MESSAGE_SIZE + 1])
     while(total_bytes_read < MESSAGE_SIZE)
     {
         bytes_read = read(sockfd, buffer, MESSAGE_SIZE - total_bytes_read);
-
-        if(bytes_read < 0)
-        {
-            fprintf(stderr, "ERROR receiving msg\n");
-            return -1;
-        }
+        if(bytes_read < 0){fprintf(stderr, "ERROR receiving msg\n");return -1;}
 
         total_bytes_read += bytes_read;
     }

@@ -36,17 +36,15 @@ UserList *remove_user(UserList *list, char* username)
 	aux_prev = NULL;
 	
 	// empty list
-	if(!list)
-		return NULL;
+	if(!list) {return NULL;}
 
 	// delete first user
-	if( strcmp(list->user.username, username) == 0 )
-		return list->next;
+	if( strcmp(list->user.username, username) == 0 ){return list->next;}
 
 
 	while(aux->next)
 	{
-		if( strcmp(aux->user.username, username) == 0 )
+		if(strcmp(aux->user.username, username) == 0 )
 		{
 			// delete
 			aux_prev->next = aux->next;
@@ -61,9 +59,10 @@ UserList *remove_user(UserList *list, char* username)
 }
 
 UserList *free_list(UserList *list) {
-	if (!list) return NULL;
+	if (!list) {return NULL;}
 
 	UserList *auxNode;
+
 	while (list) {
 		auxNode = list;
 		list = list->next;
@@ -73,25 +72,27 @@ UserList *free_list(UserList *list) {
 	return NULL;
 }
 
+/* ====== get user by username from list ================================================*/
 User get_user(UserList *list, char* username)
 {
 	UserList* aux = list;
 
 	while(aux)
 	{
-		if(strcmp( aux->user.username, username) == 0)
+		if(strcmp( aux->user.username, username) == 0){
 			return (aux->user);
-
+		}
 		aux = aux->next;
 	}
 
 	return list->user;
 }
-
+/* ====== get user by username from list ================================================*/
 void increase_user_session(UserList *list, char* username, int sockfd, int server_sync_sockfd)
 {
-	if (!list) return;
+	if (!list) {return;}
 	 
+	/* TALVEZ SEJA MELHOR USAR UM WHILE(auxNode != NULL){ auxNode->next)} */
 	UserList *auxNode;
 	for (auxNode = list; auxNode; auxNode = auxNode->next) {
 		if (strcmp(username, auxNode->user.username) == 0) {
@@ -104,7 +105,7 @@ void increase_user_session(UserList *list, char* username, int sockfd, int serve
 
 void decrease_user_session(UserList *list, char* username)
 {
-	if (!list) return;
+	if (!list) {return;}
 	 
 	UserList *auxNode;
 	for (auxNode = list; auxNode; auxNode = auxNode->next) {

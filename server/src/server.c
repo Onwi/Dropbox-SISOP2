@@ -1,11 +1,12 @@
 #include "../include/server.h"
 
 
+/*====== GLOBAL VARIABLES =====================================================================================================*/
 UserList* user_list;
 THREAD_LIST* thread_list;
 pthread_mutex_t lock;
 int is_coordinator = 0;
-
+/*===============================================================================================================================*/
 
 // struct sync_struct
 // {
@@ -255,7 +256,7 @@ void handle_upload(int newsockfd, int name_server_sockfd, User user, char sync_d
 
 	fclose(fp);
 }
-
+/*===============================================================================================================================*/
 void *user_thread(void *arg) {
 	SOCKETS new_sockets;
 	User th_user;
@@ -299,8 +300,7 @@ void *user_thread(void *arg) {
 			strcpy(th_buffer, "exit");
 			send_msg(new_sockets.sockfd, th_buffer);
 
-			close(new_sockets.sockfd);
-			close(new_sockets.server_sync_sockfd);
+			close(new_sockets.sockfd); close(new_sockets.server_sync_sockfd);
 			val = SESSION_LIMIT_ERROR;
 			pthread_mutex_unlock(&lock);
 			pthread_exit(&val);
@@ -357,68 +357,46 @@ void *user_thread(void *arg) {
 		{
 			printf("User wants to exit\n");
 
+			/*__MUTEX__*/
 			pthread_mutex_lock(&lock);
 			printf("User wants to exit: %s\n", th_user.username);
 			decrease_user_session(user_list, th_user.username);
 			th_user = get_user(user_list, th_user.username);
-
-			if(th_user.sessions_amount == 0)
-				remove_user(user_list, th_user.username);
-
+			if(th_user.sessions_amount == 0) {remove_user(user_list, th_user.username);}
 			pthread_mutex_unlock(&lock);
 
 			print_user_list(user_list);
-
-			close(newsockfd);
-			close(new_server_sync_sockfd);
+			close(newsockfd);close(new_server_sync_sockfd);
 			th_return_value = USER_EXIT;
 			pthread_exit(&th_return_value);
 		}
 	}
 }
-
+/*===============================================================================================================================*/
 int sockets_setup(int* sockfd, int* server_sync_sockfd, struct sockaddr_in* serv_addr, struct sockaddr_in* serv_sync_addr, socklen_t *clilen, char* argv, int port)
 {    
     // Create sockets
     *sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (*sockfd == -1)
-	{
-        printf("ERROR opening socket\n");
-		exit(1);
-	}
+	if (*sockfd == -1){printf("ERROR opening socket\n");exit(1);}
 
     *server_sync_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if ((*server_sync_sockfd) == -1)
-	{
-        printf("ERROR opening server sync socket\n");
-		exit(1);
-	} 
+    if ((*server_sync_sockfd) == -1){printf("ERROR opening server sync socket\n");exit(1);} 
 
 	// Bind sockets    
-	serv_addr->sin_family = AF_INET;
+	serv_addr->sin_family 			= AF_INET;
 	//serv_addr->sin_port = htons(PORT);
-    serv_addr->sin_port = htons(port);
-	serv_addr->sin_addr.s_addr = INADDR_ANY;
+    serv_addr->sin_port 			= htons(port);
+	serv_addr->sin_addr.s_addr 		= INADDR_ANY;
 	bzero(&(serv_addr->sin_zero), 8);
 
-    serv_sync_addr->sin_family = AF_INET;
+    serv_sync_addr->sin_family 		= AF_INET;
 	//serv_sync_addr->sin_port = htons(SERVER_SYNC_PORT);
-    serv_sync_addr->sin_port = htons(port + 1);
+    serv_sync_addr->sin_port 		= htons(port + 1);
 	serv_sync_addr->sin_addr.s_addr = INADDR_ANY;
 	bzero(&(serv_sync_addr->sin_zero), 8);
   
-	if (bind(*sockfd, (struct sockaddr *) serv_addr, sizeof(*serv_addr)) < 0)
-	{
-		printf("ERROR on binding socket\n");
-        perror(": ");
-		exit(1);
-	}
-
-    if (bind(*server_sync_sockfd, (struct sockaddr *) serv_sync_addr, sizeof(*serv_sync_addr)) < 0)
-	{
-		printf("ERROR on binding server sync socket\n");
-		exit(1);
-	}
+	if (bind(*sockfd, (struct sockaddr *) serv_addr, sizeof(*serv_addr)) < 0){printf("ERROR on binding socket\n");perror(": ");exit(1);}
+    if (bind(*server_sync_sockfd, (struct sockaddr *) serv_sync_addr, sizeof(*serv_sync_addr)) < 0)	{printf("ERROR on binding server sync socket\n");exit(1);}
 	
 	// Add listeners to sockets
 	listen(*sockfd, 5);
@@ -433,19 +411,11 @@ int name_server_socket_setup(int* name_server_sockfd, struct sockaddr_in* name_s
 {
     // Set name server address
     name_server = gethostbyname(hostname);
-    if(name_server == NULL)
-    {
-        fprintf(stderr, "ERROR, no such host\n");
-        return 1;
-    }
+    if(name_server == NULL){fprintf(stderr, "ERROR, no such host\n");return 1;}
 
     // Create socket
     *name_server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (*name_server_sockfd == -1)
-	{
-        printf("ERROR opening socket\n");
-		return 1;
-	}
+	if (*name_server_sockfd == -1){printf("ERROR opening socket\n");return 1;}
 
     // Bind socket
     name_server_addr->sin_family = AF_INET;  
@@ -454,11 +424,7 @@ int name_server_socket_setup(int* name_server_sockfd, struct sockaddr_in* name_s
     bzero(&(name_server_addr->sin_zero), 8);
 
     // Connect to name server
-    if (connect(*name_server_sockfd, (struct sockaddr *) name_server_addr, sizeof(*name_server_addr)) < 0)
-    {
-        fprintf(stderr, "ERROR connecting to name server\n");
-        return 1;
-    }
+    if (connect(*name_server_sockfd, (struct sockaddr *) name_server_addr, sizeof(*name_server_addr)) < 0){fprintf(stderr, "ERROR connecting to name server\n");return 1;}
 
     return 0;
 }
@@ -469,10 +435,13 @@ void get_sync_dir_replication(int name_server_sockfd, char file_path[FILE_PATH_M
 }
 
 
+/*=================================================================================================================================*/
+/*
+ * Main Args = name_server (INT ) 
+ */
 int main(int argc, char *argv[])
 {
 	int sockfd, server_sync_sockfd, name_server_sockfd, first_socket_ok, second_socket_ok, server_port, server_id;
-    unsigned int file_size;
 	socklen_t clilen;
 	struct sockaddr_in serv_addr, cli_addr, serv_sync_addr, name_server_addr;
 	pthread_t current_thread;
@@ -481,15 +450,16 @@ int main(int argc, char *argv[])
     struct hostent *name_server = NULL;
     char buffer[MESSAGE_SIZE + 1], username[USERNAME_MAX_SIZE + 1], file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
     FILE* fp = NULL;
+    unsigned int file_size;
 
 
-    // If arguments are wrong, end server
+	/* CHECK IF SERVER ID WAS CORRECT PASSED AS AN ARG*/
     if(argc != 2) {fprintf(stderr, "usage %s name_server\n", argv[0]);return 1;}
     // If setup name server socket fails, end server
     if(name_server_socket_setup(&name_server_sockfd, &name_server_addr, name_server, argv[1])) {return 1;}
     
 	// Init global variables
-	user_list = init();
+	user_list 	= init();
 	thread_list = create_thread_list();
 
     // Get server id from name server
@@ -497,8 +467,8 @@ int main(int argc, char *argv[])
     server_id = atoi(buffer);
     printf("Server id: %d\n", server_id);
 
-    if(server_id == INT_MAX)
-        is_coordinator = 1;
+    if(server_id == INT_MAX){is_coordinator = 1;}
+
 
     // Get server port from name server
     receive_msg(name_server_sockfd, buffer);

@@ -6,10 +6,10 @@
 #include <string.h>
 
 
-// UserList* user_list;
-// THREAD_LIST* thread_list;
-// pthread_mutex_t lock;
-// int is_coordinator = 0;
+UserList* user_list;
+THREAD_LIST* thread_list;
+pthread_mutex_t lock;
+int is_coordinator = 0;
 
 
 /*===============================================================================================================================*/
@@ -27,8 +27,8 @@ typedef struct sockets
     int name_server_sockfd;
 } SOCKETS;
 /*===============================================================================================================================*/
-void *user_thread(void *arg);
 
+void *user_thread(void *arg);
 void handle_download(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username[USERNAME_MAX_SIZE + 1]);
 
 void handle_upload(int newsockfd, int name_server_sockfd, User user, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1]);

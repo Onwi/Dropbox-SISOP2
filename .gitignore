@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+
+# Binary Files
+server/server
+client/client
