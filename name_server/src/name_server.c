@@ -186,6 +186,7 @@ void* server_thread(void* args)
     int number_of_files, number_of_sync_dirs, i, j, val = 0;
     FILE* fp;
     unsigned int file_size;
+    struct stat st;
 
     
     pthread_mutex_lock(&server_lock);
@@ -298,6 +299,12 @@ void* server_thread(void* args)
                 // Get username for replication
                 receive_msg(server.sockfd, buffer);
                 strcpy(username, buffer);
+
+                // Make sure sync_dir exists
+                strcpy(file_path, "sync_dir_");
+                strcat(file_path, username);
+                if(stat(file_path, &st))
+                    mkdir(file_path, 0700);
                 
                 // Get file name for replication
                 receive_msg(server.sockfd, buffer);
@@ -305,10 +312,8 @@ void* server_thread(void* args)
                 printf("File name: %s\n", file_name);
 
                 // Open file
-                strcpy(file_path, "sync_dir_");
-                strcat(file_path, username);
                 strcat(file_path, "/");
-                strcat(file_path, file_name);                
+                strcat(file_path, file_name);              
                 fp = fopen(file_path, "wb");
 
                 // Get file size for replication
@@ -326,7 +331,7 @@ void* server_thread(void* args)
                 fclose(fp);
             }
 
-            if(strstr(buffer, "Delete"))
+            else if(strstr(buffer, "Delete"))
             {
                 // Get file path for delete replication
                 receive_msg(server.sockfd, buffer);
@@ -335,6 +340,17 @@ void* server_thread(void* args)
                 remove(file_path);
 
                 server_list_replicate_delete_file(server_list, file_path);
+            }
+
+            else if(strstr(buffer, "New sync dir"))
+            {
+                // Get new sync dir path
+                receive_msg(server.sockfd, buffer);
+                strcpy(sync_dir_path, buffer);
+
+                mkdir(sync_dir_path, 0700);
+
+                server_list_replicate_new_sync_dir(server_list, sync_dir_path);
             }
         }
     }

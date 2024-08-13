@@ -164,3 +164,21 @@ void server_list_replicate_delete_file(SERVER_LIST_NODE* server_list, char file_
         send_msg(aux->server.sockfd, buffer);
     }
 }
+
+void server_list_replicate_new_sync_dir(SERVER_LIST_NODE* server_list, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1])
+{
+    SERVER_LIST_NODE* aux;
+    char buffer[MESSAGE_SIZE + 1];
+
+
+    for(aux = server_list; aux; aux = aux->next)
+    {
+        // Send delete request for replication
+        strcpy(buffer, "New sync dir");
+        send_msg(aux->server.sockfd, buffer);
+        
+        // Send file path for delete replication
+        strcpy(buffer, sync_dir_path);
+        send_msg(aux->server.sockfd, buffer);
+    }
+}

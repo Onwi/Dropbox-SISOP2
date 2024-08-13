@@ -421,7 +421,7 @@ void* frontend(void *args)
 
 void get_server_address(int name_server_sockfd)
 {
-    char buffer[MESSAGE_SIZE];
+    char buffer[MESSAGE_SIZE + 1];
 
     printf("estou aqui 2\n");
     // Get coordinator hostname
@@ -510,16 +510,16 @@ int main(int argc, char *argv[])
     while(1)
     {
         // Handle user interruption
+        pthread_mutex_lock(&inotify_event_lock);
         pthread_mutex_lock(&upload_lock);
         pthread_mutex_lock(&delete_lock);
         pthread_mutex_lock(&sync_propagation_lock);
-        pthread_mutex_lock(&inotify_event_lock);
         if(INTERRUPTION)
             break;
-        pthread_mutex_unlock(&inotify_event_lock);
         pthread_mutex_unlock(&sync_propagation_lock);
         pthread_mutex_unlock(&delete_lock);
         pthread_mutex_unlock(&upload_lock);
+        pthread_mutex_unlock(&inotify_event_lock);
 
         strcpy(buffer, "Waiting for user input");
 

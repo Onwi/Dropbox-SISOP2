@@ -69,7 +69,7 @@ void handle_download(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username
 	return;
 }
 
-void get_sync_dir(int newsockfd, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1])
+void get_sync_dir(int newsockfd, int name_server_sockfd, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1])
 {
 	int number_of_files;
 	DIR *dp;
@@ -83,7 +83,19 @@ void get_sync_dir(int newsockfd, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1])
 	
 	// If user directory doesnt exist, create one
 	if (stat(sync_dir_path, &st) == -1)
+    {
 		mkdir(sync_dir_path, 0700);
+
+        // Send new sync dir request for replication
+        strcpy(buffer, "New sync dir");
+        send_msg(name_server_sockfd, buffer);
+
+        // Send sync dir path for replication
+        strcpy(buffer, sync_dir_path);
+        send_msg(name_server_sockfd, buffer);
+
+        printf("Sent new sync dir info\n");
+    }
 	  
 	dp = opendir(sync_dir_path);
 
@@ -338,7 +350,7 @@ void *user_thread(void *arg) {
 	// Create and synchronize sync dir
 	strcpy(sync_dir_path, "sync_dir_");
 	strcat(sync_dir_path, th_user.username);
-	get_sync_dir(newsockfd, sync_dir_path);
+	get_sync_dir(newsockfd, new_sockets.name_server_sockfd, sync_dir_path);
 
 	while(1)
 	{
@@ -650,8 +662,9 @@ int main(int argc, char *argv[])
 	User* user;
 	SOCKETS new_sockets;
     struct hostent *name_server = NULL;
-    char buffer[MESSAGE_SIZE + 1], username[USERNAME_MAX_SIZE + 1], file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
+    char buffer[MESSAGE_SIZE + 1], username[USERNAME_MAX_SIZE + 1], file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1], sync_dir_path[9 + USERNAME_MAX_SIZE + 1];
     FILE* fp;
+    struct stat st;
 
 
     // If arguments are wrong, end server
@@ -708,6 +721,8 @@ int main(int argc, char *argv[])
 		// If server is not coordinator, receive backup data
         if(!is_coordinator)
         {
+            printf("Waiting for backup request\n");
+            
             // Get replication request
             receive_msg(name_server_sockfd, buffer);
 
@@ -716,6 +731,14 @@ int main(int argc, char *argv[])
                 // Get username for replication
                 receive_msg(name_server_sockfd, buffer);
                 strcpy(username, buffer);
+
+                // Check if sync dir exists
+                strcpy(file_path, "sync_dir_");
+                strcat(file_path, username);
+                if (stat(file_path, &st) == -1)
+                {
+                    mkdir(file_path, 0700);
+                }
                 
                 // Get file name for replication
                 receive_msg(name_server_sockfd, buffer);
@@ -726,8 +749,6 @@ int main(int argc, char *argv[])
                 file_size = atoi(buffer);
 
                 // Get file data for replication
-                strcpy(file_path, "sync_dir_");
-                strcat(file_path, username);
                 strcat(file_path, "/");
                 strcat(file_path, file_name);
                 printf("File name or path (CHECK):  %s\n", file_path);
@@ -736,13 +757,22 @@ int main(int argc, char *argv[])
                 fclose(fp);
             }
 
-            if(strstr(buffer, "Delete"))
+            else if(strstr(buffer, "Delete"))
             {
                 // Get file path for delete replication
                 receive_msg(name_server_sockfd, buffer);
                 strcpy(file_path, buffer);
 
                 remove(file_path);
+            }
+
+            else if(strstr(buffer, "New sync dir"))
+            {
+                // Get file path for delete replication
+                receive_msg(name_server_sockfd, buffer);
+                strcpy(sync_dir_path, buffer);
+
+                mkdir(sync_dir_path, 0700);
             }
         }
         // Server is coordinator

@@ -26,3 +26,4 @@ void server_list_make_it_coordinator(SERVER_LIST_NODE* server_list, int id);
 void server_list_make_it_backup(SERVER_LIST_NODE* server_list, int id);
 void server_list_replicate_file(SERVER_LIST_NODE* server_list, FILE* fp, char file_name[FILE_NAME_MAX_SIZE + 1], unsigned int file_size, char username[USERNAME_MAX_SIZE + 1]);
 void server_list_replicate_delete_file(SERVER_LIST_NODE* server_list, char file_path[FILE_PATH_MAX_SIZE + 1]);
+void server_list_replicate_new_sync_dir(SERVER_LIST_NODE* server_list, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1]);
