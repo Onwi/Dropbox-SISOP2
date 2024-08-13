@@ -515,7 +515,22 @@ int main(int argc, char *argv[])
         pthread_mutex_lock(&delete_lock);
         pthread_mutex_lock(&sync_propagation_lock);
         if(INTERRUPTION)
+        {
+            // Sends exit request
+            strcpy(buffer, "exit");
+            send_msg(sockfd, buffer);
+
+            // If user sync dir exist, remote it
+            if (stat(sync_dir_path, &st) == 0)
+            {
+                rmrf(sync_dir_path);
+                printf("Sync dir deleted\n");
+            }
+                
+            close(sockfd);
+            close(server_sync_sockfd);
             break;
+        }
         pthread_mutex_unlock(&sync_propagation_lock);
         pthread_mutex_unlock(&delete_lock);
         pthread_mutex_unlock(&upload_lock);

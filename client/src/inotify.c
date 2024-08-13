@@ -36,7 +36,7 @@ void *listen_inotify(void *args)
         pthread_exit(&error);
     }
 
-    int wd = inotify_add_watch(fd, dir_path, IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO/*| IN_MODIFY | IN_MOVE*/);
+    int wd = inotify_add_watch(fd, dir_path, IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO /* | IN_MODIFY | IN_MOVE*/);
 
     if (wd < 0)
     {
@@ -85,7 +85,7 @@ void *listen_inotify(void *args)
                 pthread_mutex_unlock(&delete_lock);
             }
             
-            if (pevent->mask & IN_CREATE || pevent->mask & IN_MOVED_TO)
+            if (pevent->mask & IN_CREATE || pevent->mask & IN_MOVED_TO || pevent->mask & IN_MODIFY)
             {
                 if(pevent->mask & IN_CREATE)
                     printf("in create\n");
