@@ -423,6 +423,7 @@ void get_server_address(int name_server_sockfd)
 {
     char buffer[MESSAGE_SIZE];
 
+    printf("estou aqui 2\n");
     // Get coordinator hostname
     receive_msg(name_server_sockfd, buffer);
     printf("Server address: %s\n", buffer);
@@ -472,6 +473,8 @@ int main(int argc, char *argv[])
     // If name server socket setup fails, end client
     if(name_server_socket_setup(&name_server_sockfd, &name_server_addr, name_server))
         return 1;
+
+    printf("estou aqui\n");
 
     // Get coordinator server from name server
     get_server_address(name_server_sockfd);

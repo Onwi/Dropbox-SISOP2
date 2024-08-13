@@ -73,14 +73,119 @@ int frontend_socket_setup(int* sockfd, struct sockaddr_in* serv_addr, socklen_t 
     return 0;
 }
 
+void send_all_sync_dir_replication(int name_server_sockfd)
+{
+	DIR* dp, *current_dir;
+	int number_of_files, number_of_sync_dirs;
+	struct dirent *ep, *ep_current;
+    unsigned int file_size;
+    char buffer[MESSAGE_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
+    FILE* fp;
+
+
+	dp = opendir("./");
+	number_of_sync_dirs = 0;
+
+	// Count number of sync dirs
+	while((ep = readdir(dp)))
+	{
+		if (strcmp(ep->d_name, ".") == 0 || strcmp(ep->d_name, "..") == 0 || (ep->d_type != DT_DIR) || !strstr(ep->d_name, "sync_dir"))
+		{
+			// Do nothing
+		}
+		else
+		{
+			number_of_sync_dirs++;
+		}
+	}
+
+	rewinddir(dp);
+
+    // Send number of sync dirs for replication
+    itoa(number_of_sync_dirs, buffer);
+    send_msg(name_server_sockfd, buffer);
+
+	while((ep = readdir(dp)))
+	{
+		if (strcmp(ep->d_name, ".") == 0 || strcmp(ep->d_name, "..") == 0 || (ep->d_type != DT_DIR) || !strstr(ep->d_name, "sync_dir"))
+		{
+			// Do nothing 
+		}
+		else
+		{
+			// Send sync dir name for replication
+			strcpy(buffer, ep->d_name);
+			send_msg(name_server_sockfd, buffer);
+			
+			current_dir = opendir(ep->d_name);
+
+            number_of_files = 0;
+
+			while((ep_current = readdir(current_dir)))
+			{
+				if (strcmp(ep_current->d_name, ".") == 0 || strcmp(ep_current->d_name, "..") == 0)
+				{
+					// Do nothing 
+				}
+				else
+				{
+					number_of_files++;
+				}
+			}
+
+			printf("Directory %s has %d files.\n", ep->d_name, number_of_files);
+
+	        rewinddir(current_dir);
+
+            // Send number of files
+            itoa(number_of_files, buffer);
+            send_msg(name_server_sockfd, buffer);
+
+            while((ep_current = readdir(current_dir)))
+            {
+                if (strcmp(ep_current->d_name, ".") == 0 || strcmp(ep_current->d_name, "..") == 0)
+				{
+					// Do nothing 
+				}
+                else
+                {               
+                    printf("Name: %s\n", ep_current->d_name);
+
+                    // File path
+                    strcpy(file_path, ep->d_name);
+                    strcat(file_path, "/");
+                    strcat(file_path, ep_current->d_name);
+
+                    fp = fopen(file_path /*ep_current->d_name*/, "rb");
+
+                    // Send file name for replication
+                    strcpy(buffer, ep_current->d_name);
+                    send_msg(name_server_sockfd, buffer);
+
+                    // Send file size for replication
+                    fseek(fp, 0, SEEK_END);
+                    file_size = ftell(fp);
+                    rewind(fp);
+                    itoa(file_size, buffer);
+                    send_msg(name_server_sockfd, buffer);
+
+					// Send file data for replication
+                    send_file(name_server_sockfd, fp, file_size);
+
+                    fclose(fp);
+                }
+            }
+		}
+	}
+}
+
 void* server_thread(void* args)
 {
     SERVER server;
-    char buffer[MESSAGE_SIZE + 1], file_name[FILE_NAME_MAX_SIZE + 1];
-    int val = 0;
+    char buffer[MESSAGE_SIZE + 1], file_name[FILE_NAME_MAX_SIZE + 1], username[USERNAME_MAX_SIZE + 1], sync_dir_path[9 + USERNAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
+    int number_of_files, number_of_sync_dirs, i, j, val = 0;
     FILE* fp;
     unsigned int file_size;
-    char username[USERNAME_MAX_SIZE + 1];
 
     
     pthread_mutex_lock(&server_lock);
@@ -111,7 +216,7 @@ void* server_thread(void* args)
     if(server.id == INT_MAX)
     {
         server_list_make_it_coordinator(server_list, server.id);
-        new_coordinator = 1;
+        //new_coordinator = 1;
         coordinator_server = server;
     }
     else
@@ -126,6 +231,61 @@ void* server_thread(void* args)
     server_list_print(server_list);
     pthread_mutex_unlock(&server_lock);
 
+    // Get sync dir for replication (from coordenator)
+    if(server.is_coordinator)
+    {
+        // Get number of sync dirs for replication
+        receive_msg(server.sockfd, buffer);
+        number_of_sync_dirs = atoi(buffer);
+
+        printf("Number of dirs: %d\n", number_of_sync_dirs);
+
+        for(i = 0; i < number_of_sync_dirs; i++)
+        {
+            // Get sync dir name for replication
+            receive_msg(server.sockfd, buffer);
+            strcpy(sync_dir_path, buffer);
+
+            printf("Dir name: %s\n", sync_dir_path);
+
+            // Create sync dir
+            mkdir(sync_dir_path, 0700);
+
+            // Get number of files for replication
+            receive_msg(server.sockfd, buffer);
+            number_of_files = atoi(buffer);
+
+            for(j = 0; j < number_of_files; j++)
+            {
+                // Get file name for replication
+                receive_msg(server.sockfd, buffer);
+                strcpy(file_name, buffer);
+
+                strcpy(file_path, sync_dir_path);
+                strcat(file_path, "/");
+                strcat(file_path, file_name);
+
+                fp = fopen(file_path, "wb");
+
+                // Get file size for replication
+                receive_msg(server.sockfd, buffer);
+                file_size = atoi(buffer);
+
+                // Get file data for replication
+                receive_file(server.sockfd, fp, file_size);
+
+                fclose(fp);
+            }
+        }
+    }
+    // Send sync dir for replication (to backup)
+    else 
+    {
+        printf("Sending dir to backup\n");
+        send_all_sync_dir_replication(server.sockfd);
+    }
+
+    // Wait for server request
     while(1)
     {
         if(server.is_coordinator)
@@ -143,8 +303,13 @@ void* server_thread(void* args)
                 receive_msg(server.sockfd, buffer);
                 strcpy(file_name, buffer);
                 printf("File name: %s\n", file_name);
-                
-                fp = fopen(file_name, "wb");
+
+                // Open file
+                strcpy(file_path, "sync_dir_");
+                strcat(file_path, username);
+                strcat(file_path, "/");
+                strcat(file_path, file_name);                
+                fp = fopen(file_path, "wb");
 
                 // Get file size for replication
                 receive_msg(server.sockfd, buffer);
@@ -154,9 +319,22 @@ void* server_thread(void* args)
 
                 fclose(fp);
 
-                fp = fopen(file_name, "rb");
+                fp = fopen(file_path, "rb");
 
-                server_list_replicate_file(server_list, server.sockfd, fp, file_name, file_size, username);
+                server_list_replicate_file(server_list, fp, file_name, file_size, username);
+
+                fclose(fp);
+            }
+
+            if(strstr(buffer, "Delete"))
+            {
+                // Get file path for delete replication
+                receive_msg(server.sockfd, buffer);
+                strcpy(file_path, buffer);
+                
+                remove(file_path);
+
+                server_list_replicate_delete_file(server_list, file_path);
             }
         }
     }
@@ -170,9 +348,19 @@ void* frontend_thread(void* args)
     int new_sockfd = *(int*) args;
     char buffer[MESSAGE_SIZE + 1];
 
+    // Get connection for the first time
+
+    // Send coordinator hostname
+    strcpy(buffer, coordinator_server.hostname);
+    send_msg(new_sockfd, buffer);
+
+    // Send coordinator server port
+    itoa(coordinator_server.port, buffer);
+    send_msg(new_sockfd, buffer);
+
     while(1)
     {
-        pthread_mutex_lock(&server_lock);
+        //pthread_mutex_lock(&server_lock);
         if(new_coordinator)
         {
             // Send coordinator hostname
@@ -187,7 +375,7 @@ void* frontend_thread(void* args)
         }
 
         sleep(1);
-        pthread_mutex_unlock(&server_lock);
+        //pthread_mutex_unlock(&server_lock);
     }
 
     val = 0;
@@ -204,6 +392,8 @@ void* frontend_handler(void* args)
     // Setup sockets
     frontend_socket_setup(&sockfd, &serv_addr, &clilen);
 
+    printf("estou aqui\n");
+
     // Name server waits for next frontend connection
 	while(1)
 	{
@@ -216,7 +406,7 @@ void* frontend_handler(void* args)
         // Create thread for frontends connection
         frontend_thread_descriptor = get_last_thread(frontend_thread_list);
         frontend_thread_list = add_to_thread_list(frontend_thread_list);
-
+        printf("estou aqui 2\n");
         pthread_create(&frontend_thread_descriptor, NULL, frontend_thread, &new_sockfd);
 	}
 

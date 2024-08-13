@@ -112,16 +112,23 @@ void server_list_make_it_backup(SERVER_LIST_NODE* server_list, int id)
         auxNode->server.is_coordinator = 0;
 }
 
-void server_list_replicate_file(SERVER_LIST_NODE* server_list, int sockfd, FILE* fp, char file_name[FILE_NAME_MAX_SIZE + 1], unsigned int file_size, char username[USERNAME_MAX_SIZE + 1])
+void server_list_replicate_file(SERVER_LIST_NODE* server_list, FILE* fp, char file_name[FILE_NAME_MAX_SIZE + 1], unsigned int file_size, char username[USERNAME_MAX_SIZE + 1])
 {
     SERVER_LIST_NODE* aux;
     char buffer[MESSAGE_SIZE + 1];
+
 
     for(aux = server_list; aux; aux = aux->next)
     {
         // If server is backup, replicate file
         if(aux->server.is_coordinator == 0)
         {
+            rewind(fp);
+
+            // Send upload request for replication
+            strcpy(buffer, "Upload");
+            send_msg(aux->server.sockfd, buffer);
+            
             // Send username for replication
             strcpy(buffer, username);
             send_msg(aux->server.sockfd, buffer);
@@ -137,5 +144,23 @@ void server_list_replicate_file(SERVER_LIST_NODE* server_list, int sockfd, FILE*
             // Send file data for replication
             send_file(aux->server.sockfd, fp, file_size);
         }
+    }
+}
+
+void server_list_replicate_delete_file(SERVER_LIST_NODE* server_list, char file_path[FILE_PATH_MAX_SIZE + 1])
+{
+    SERVER_LIST_NODE* aux;
+    char buffer[MESSAGE_SIZE + 1];
+
+
+    for(aux = server_list; aux; aux = aux->next)
+    {
+        // Send delete request for replication
+        strcpy(buffer, "Delete");
+        send_msg(aux->server.sockfd, buffer);
+        
+        // Send file path for delete replication
+        strcpy(buffer, file_path);
+        send_msg(aux->server.sockfd, buffer);
     }
 }

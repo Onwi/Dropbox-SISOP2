@@ -84,7 +84,6 @@ void get_sync_dir(int newsockfd, char sync_dir_path[9 + USERNAME_MAX_SIZE + 1])
 	// If user directory doesnt exist, create one
 	if (stat(sync_dir_path, &st) == -1)
 		mkdir(sync_dir_path, 0700);
-
 	  
 	dp = opendir(sync_dir_path);
 
@@ -171,7 +170,7 @@ void delete_propagation(char username[USERNAME_MAX_SIZE + 1], char file_path[FIL
     }
 }
 
-void handle_delete(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username[USERNAME_MAX_SIZE + 1])
+void handle_delete(int newsockfd, int name_server_sockfd, char buffer[MESSAGE_SIZE + 1], char username[USERNAME_MAX_SIZE + 1])
 {
     char file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
     
@@ -188,6 +187,14 @@ void handle_delete(int newsockfd, char buffer[MESSAGE_SIZE + 1], char username[U
 	{
         printf("File %s deleted\n", file_name);
 		delete_propagation(username, file_path);
+
+        // Send delete request for replication
+        strcpy(buffer, "Delete");
+        send_msg(name_server_sockfd, buffer);
+        
+        // Send file path for delete replication
+        strcpy(buffer, file_path);
+        send_msg(name_server_sockfd, buffer);
 	}
     else
         printf("Could not delete %s\n", file_name);
@@ -358,7 +365,7 @@ void *user_thread(void *arg) {
 		else if(strstr(th_buffer, "delete")) // Handle delete
 		{
 			printf("User wants to delete\n");
-            handle_delete(newsockfd, th_buffer, th_user.username);
+            handle_delete(newsockfd, new_sockets.name_server_sockfd, th_buffer, th_user.username);
 		}
 		else if(strstr(th_buffer, "list_server")) // Handle list server
 		{
@@ -407,13 +414,11 @@ int sockets_setup(int* sockfd, int* server_sync_sockfd, struct sockaddr_in* serv
 
 	// Bind sockets    
 	serv_addr->sin_family = AF_INET;
-	//serv_addr->sin_port = htons(PORT);
     serv_addr->sin_port = htons(port);
 	serv_addr->sin_addr.s_addr = INADDR_ANY;
 	bzero(&(serv_addr->sin_zero), 8);
 
     serv_sync_addr->sin_family = AF_INET;
-	//serv_sync_addr->sin_port = htons(SERVER_SYNC_PORT);
     serv_sync_addr->sin_port = htons(port + 1);
 	serv_sync_addr->sin_addr.s_addr = INADDR_ANY;
 	bzero(&(serv_sync_addr->sin_zero), 8);
@@ -474,11 +479,166 @@ int name_server_socket_setup(int* name_server_sockfd, struct sockaddr_in* name_s
     return 0;
 }
 
-void get_sync_dir_replication(int name_server_sockfd, char file_path[FILE_PATH_MAX_SIZE + 1])
+void send_all_sync_dir_replication(int name_server_sockfd)
 {
-    return;
+	DIR* dp, *current_dir;
+	int number_of_files, number_of_sync_dirs;
+	struct dirent *ep, *ep_current;
+    unsigned int file_size;
+    char buffer[MESSAGE_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
+    FILE* fp;
+
+
+	dp = opendir("./");
+	number_of_sync_dirs = 0;
+
+	// Count number of sync dirs
+	while((ep = readdir(dp)))
+	{
+		if (strcmp(ep->d_name, ".") == 0 || strcmp(ep->d_name, "..") == 0 || (ep->d_type != DT_DIR) || !strstr(ep->d_name, "sync_dir"))
+		{
+			// Do nothing
+		}
+		else
+		{
+			number_of_sync_dirs++;
+		}
+	}
+
+	rewinddir(dp);
+
+    // Send number of sync dirs for replication
+    itoa(number_of_sync_dirs, buffer);
+    send_msg(name_server_sockfd, buffer);
+
+	while((ep = readdir(dp)))
+	{
+		if (strcmp(ep->d_name, ".") == 0 || strcmp(ep->d_name, "..") == 0 || (ep->d_type != DT_DIR) || !strstr(ep->d_name, "sync_dir"))
+		{
+			// Do nothing 
+		}
+		else
+		{
+			// Send sync dir name for replication
+			strcpy(buffer, ep->d_name);
+			send_msg(name_server_sockfd, buffer);
+			
+			current_dir = opendir(ep->d_name);
+
+            number_of_files = 0;
+
+			while((ep_current = readdir(current_dir)))
+			{
+				if (strcmp(ep_current->d_name, ".") == 0 || strcmp(ep_current->d_name, "..") == 0)
+				{
+					// Do nothing 
+				}
+				else
+				{
+					number_of_files++;
+				}
+			}
+
+			printf("Directory %s has %d files.\n", ep->d_name, number_of_files);
+
+	        rewinddir(current_dir);
+
+            // Send number of files
+            itoa(number_of_files, buffer);
+            send_msg(name_server_sockfd, buffer);
+
+            while((ep_current = readdir(current_dir)))
+            {
+                if (strcmp(ep_current->d_name, ".") == 0 || strcmp(ep_current->d_name, "..") == 0)
+				{
+					// Do nothing 
+				}
+                else
+                {               
+                    printf("Name: %s\n", ep_current->d_name);
+
+                    // File path
+                    strcpy(file_path, ep->d_name);
+                    strcat(file_path, "/");
+                    strcat(file_path, ep_current->d_name);
+
+                    fp = fopen(file_path /*ep_current->d_name*/, "rb");
+
+                    // Send file name for replication
+                    strcpy(buffer, ep_current->d_name);
+                    send_msg(name_server_sockfd, buffer);
+
+                    // Send file size for replication
+                    fseek(fp, 0, SEEK_END);
+                    file_size = ftell(fp);
+                    rewind(fp);
+                    itoa(file_size, buffer);
+                    send_msg(name_server_sockfd, buffer);
+
+					// Send file data for replication
+                    send_file(name_server_sockfd, fp, file_size);
+
+                    fclose(fp);
+                }
+            }
+		}
+	}
 }
 
+void get_all_sync_dir_replication(int name_server_sockfd)
+{
+	char buffer[MESSAGE_SIZE + 1], sync_dir_path[9 + USERNAME_MAX_SIZE + 1], file_name[FILE_NAME_MAX_SIZE + 1], file_path[FILE_PATH_MAX_SIZE + 1];
+    int number_of_files, number_of_sync_dirs, i, j;
+    unsigned int file_size;
+    FILE* fp;
+
+
+    printf("Waiting for dir to backup\n");
+
+    // Get number of sync dirs for replication
+    receive_msg(name_server_sockfd, buffer);
+    number_of_sync_dirs = atoi(buffer);
+
+    printf("Number of dirs: %d\n", number_of_sync_dirs);
+
+    for(i = 0; i < number_of_sync_dirs; i++)
+    {
+        // Get sync dir name for replication
+        receive_msg(name_server_sockfd, buffer);
+        strcpy(sync_dir_path, buffer);
+
+        printf("Dir name: %s\n", sync_dir_path);
+
+        // Create sync dir
+        mkdir(sync_dir_path, 0700);
+
+        // Get number of files for replication
+        receive_msg(name_server_sockfd, buffer);
+        number_of_files = atoi(buffer);
+
+        for(j = 0; j < number_of_files; j++)
+        {
+            // Get file name for replication
+            receive_msg(name_server_sockfd, buffer);
+            strcpy(file_name, buffer);
+
+            strcpy(file_path, sync_dir_path);
+            strcat(file_path, "/");
+            strcat(file_path, file_name);
+
+            fp = fopen(file_path, "wb");
+
+            // Get file size for replication
+            receive_msg(name_server_sockfd, buffer);
+            file_size = atoi(buffer);
+
+            // Get file data for replication
+            receive_file(name_server_sockfd, fp, file_size);
+
+            fclose(fp);
+        }
+    }
+}
 
 int main(int argc, char *argv[])
 {
@@ -526,8 +686,21 @@ int main(int argc, char *argv[])
     gethostname(buffer, MESSAGE_SIZE);
     send_msg(name_server_sockfd, buffer);
 
+
+    printf("estou aqui\n");
+
     // Setup sockets
     sockets_setup(&sockfd, &server_sync_sockfd, &serv_addr, &serv_sync_addr, &clilen, argv[1], server_port);
+    printf("estou aqui 2\n");
+	if(is_coordinator)
+		send_all_sync_dir_replication(name_server_sockfd);
+
+	else
+    {
+        printf("estou aqui 3\n");
+		get_all_sync_dir_replication(name_server_sockfd);
+        printf("estou aqui 4\n");
+    }
 
 	// Server waits for next connection
 	while(1)
@@ -538,20 +711,7 @@ int main(int argc, char *argv[])
             // Get replication request
             receive_msg(name_server_sockfd, buffer);
 
-            if(strstr(buffer, "Sync dir"))
-            {
-                // Get username for replication
-                receive_msg(name_server_sockfd, buffer);
-                strcpy(username, buffer);
-
-                strcpy(file_path, "sync_dir_");
-                strcat(file_path, username);
-                strcat(file_path, "/");
-
-                get_sync_dir_replication(name_server_sockfd, file_path);
-            }
-
-            else if(strstr(buffer, "Upload"))
+            if(strstr(buffer, "Upload"))
             {
                 // Get username for replication
                 receive_msg(name_server_sockfd, buffer);
@@ -566,7 +726,23 @@ int main(int argc, char *argv[])
                 file_size = atoi(buffer);
 
                 // Get file data for replication
+                strcpy(file_path, "sync_dir_");
+                strcat(file_path, username);
+                strcat(file_path, "/");
+                strcat(file_path, file_name);
+                printf("File name or path (CHECK):  %s\n", file_path);
+                fp = fopen(file_path, "wb");
                 receive_file(name_server_sockfd, fp, file_size);
+                fclose(fp);
+            }
+
+            if(strstr(buffer, "Delete"))
+            {
+                // Get file path for delete replication
+                receive_msg(name_server_sockfd, buffer);
+                strcpy(file_path, buffer);
+
+                remove(file_path);
             }
         }
         // Server is coordinator
